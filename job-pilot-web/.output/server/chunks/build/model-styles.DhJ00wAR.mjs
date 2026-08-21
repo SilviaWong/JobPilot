@@ -1,0 +1,9 @@
+//#region pages/ai/model.vue?vue&type=style&index=0&scoped=b9a5de79&inline&used&lang.css
+var model_vue_vue_type_style_index_0_scoped_b9a5de79_inline_used_lang_default = ".mac-container[data-v-b9a5de79]{font-family:-apple-system,BlinkMacSystemFont,SF Pro Text,PingFang SC,Inter,sans-serif}.profile-item[data-v-b9a5de79]{cursor:pointer;color:#1d1d1f;border-radius:8px;margin-bottom:4px;padding:10px 12px;font-size:14px;font-weight:500;transition:background-color .2s,color .2s}.profile-item[data-v-b9a5de79]:hover{background-color:#0000000a}.profile-item.is-active[data-v-b9a5de79]{color:#fff;background-color:#007aff}.input-group[data-v-b9a5de79]{margin-bottom:16px}.input-label[data-v-b9a5de79]{color:#86868b;margin-bottom:8px;font-size:13px;font-weight:600;display:block}.api-input[data-v-b9a5de79]{color:#1d1d1f;box-sizing:border-box;background:#fff;border:1px solid #0000001a;border-radius:10px;width:100%;padding:12px 14px;font-size:14px;transition:all .2s}.api-input[data-v-b9a5de79]:focus{border-color:#007aff;outline:none;box-shadow:0 0 0 3px #007aff1a}.btn-primary[data-v-b9a5de79]{color:#fff;cursor:pointer;background-color:#007aff;border:none;border-radius:8px;flex:1;padding:12px;font-size:14px;font-weight:500;transition:all .3s cubic-bezier(.25,.8,.25,1)}.btn-primary[data-v-b9a5de79]:hover{background-color:#06c;transform:translateY(-1px);box-shadow:0 12px 40px #00000014}.btn-primary[data-v-b9a5de79]:disabled{opacity:.6;cursor:not-allowed}.btn-test[data-v-b9a5de79]:hover{background:#f8f9fa!important}.btn-test[data-v-b9a5de79]:disabled{opacity:.6;cursor:not-allowed}";
+
+const modelStyles_DhJ00wAR = [
+  model_vue_vue_type_style_index_0_scoped_b9a5de79_inline_used_lang_default
+];
+
+export { modelStyles_DhJ00wAR as default };
+//# sourceMappingURL=model-styles.DhJ00wAR.mjs.map

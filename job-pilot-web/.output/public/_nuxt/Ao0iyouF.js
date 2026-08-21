@@ -1,0 +1,1 @@
+import{B as e,W as t}from"./j_VWlkQm.js";function n(e,n,r){var i=e==null?void 0:t(e,n);return i===void 0?r:i}function r(t,n,r){return t==null?t:e(t,n,r)}var i=e=>Object.keys(e),a=(e,t,i)=>({get value(){return n(e,t,i)},set value(n){r(e,t,n)}});export{i as n,n as r,a as t};

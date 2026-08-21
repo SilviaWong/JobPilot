@@ -1,0 +1,24 @@
+{
+  "name": "job-pilot-web",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview"
+  },
+  "dependencies": {
+    "echarts": "^5.5.1",
+    "echarts-wordcloud": "^2.1.0",
+    "element-plus": "^2.14.3",
+    "lucide-vue-next": "^1.0.0",
+    "nuxt": "^4.5.1",
+    "vue": "^3.5.40",
+    "vue-echarts": "^7.0.3",
+    "vue-router": "^5.2.0"
+  },
+  "devDependencies": {
+    "@element-plus/nuxt": "^1.0.7"
+  }
+}

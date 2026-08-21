@@ -1,0 +1,31 @@
+server:
+  port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+      enabled: true
+
+spring:
+  application:
+    name: job-pilot-server
+  datasource:
+    driver-class-name: org.sqlite.JDBC
+    # 优先读取环境变量 DB_PATH，若未设置则读取共享旧项目数据库；需要独立数据库时只需设置环境变量 DB_PATH 或修改此处
+    url: jdbc:sqlite:${DB_PATH:/Users/wangyanan/Projects2/job-dashboard-local/prisma/dev.db}
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    db-config:
+      id-type: assign_uuid
+
+logging:
+  level:
+    com.jobpilot: debug
