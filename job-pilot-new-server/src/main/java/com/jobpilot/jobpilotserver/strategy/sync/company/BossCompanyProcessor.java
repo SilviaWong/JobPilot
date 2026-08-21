@@ -27,12 +27,12 @@ public class BossCompanyProcessor extends AbstractCompanyProcessor {
     }
 
     @Override
-    protected String getStandardizedPlatform(String platform) {
+    public String getStandardizedPlatform(String platform) {
         return "Boss直聘";
     }
 
     @Override
-    protected CompanyFieldsDTO extractFields(Map<?, ?> company, String platform) {
+    public CompanyFieldsDTO extractFields(Map<?, ?> company, String platform) {
         String cName = getString(company, "公司名称", "brandName", "公司全称", "companyName");
         String cFullName = getString(company, "公司全称", "companyFullName");
         if (cFullName.isEmpty()) {

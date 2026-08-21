@@ -12,7 +12,14 @@ spring:
   datasource:
     driver-class-name: org.sqlite.JDBC
     # 优先读取环境变量 DB_PATH，若未设置则读取共享旧项目数据库；需要独立数据库时只需设置环境变量 DB_PATH 或修改此处
-    url: jdbc:sqlite:${DB_PATH:/Users/wangyanan/Projects2/job-dashboard-local/prisma/dev.db}
+    url: jdbc:sqlite:${DB_PATH:/Users/wangyanan/Projects2/job-dashboard-local/prisma/dev.db}?journal_mode=WAL&busy_timeout=10000&synchronous=NORMAL
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-init-sql: "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=10000; PRAGMA synchronous=NORMAL;"
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
   servlet:
     multipart:
       max-file-size: 100MB

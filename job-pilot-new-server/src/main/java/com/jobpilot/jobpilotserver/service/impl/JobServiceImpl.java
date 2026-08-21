@@ -1,6 +1,7 @@
 package com.jobpilot.jobpilotserver.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -15,6 +16,7 @@ import com.jobpilot.jobpilotserver.service.ResumeService;
 import com.jobpilot.jobpilotserver.strategy.llm.LlmClient;
 import com.jobpilot.jobpilotserver.strategy.normalizer.JobNormalizerFactory;
 import com.jobpilot.jobpilotserver.strategy.normalizer.JobNormalizerStrategy;
+import com.jobpilot.jobpilotserver.util.LlmResponseParser;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.jobpilot.jobpilotserver.common.exception.BusinessException;
 import com.jobpilot.jobpilotserver.common.result.ResultCode;
@@ -327,28 +329,34 @@ public class JobServiceImpl extends ServiceImpl<JobMapper, Job> implements JobSe
      * @param tags 自定义标签列表
      * @return 成功更新的记录条数
      */
+    /**
+     * 批量更新多个职位的属性（收藏、隐藏、标签）- 单条批量 SQL 优化
+     *
+     * @param ids 职位主键列表
+     * @param isFavorited 收藏状态
+     * @param isHidden 隐藏状态
+     * @param tags 自定义标签列表
+     * @return 成功更新的记录条数
+     */
     @Override
     public int batchUpdate(List<String> ids, Boolean isFavorited, Boolean isHidden, List<String> tags) {
         if (ids == null || ids.isEmpty()) return 0;
-        int count = 0;
         String tagsJson = null;
         if (tags != null) {
             try {
                 tagsJson = objectMapper.writeValueAsString(tags);
             } catch (Exception ignored) {}
         }
-        for (String id : ids) {
-            Job job = jobMapper.selectById(id);
-            if (job != null) {
-                if (isFavorited != null) job.setIsFavorited(isFavorited);
-                if (isHidden != null) job.setIsHidden(isHidden);
-                if (tagsJson != null) job.setTags(tagsJson);
-                job.setUpdatedAt(LocalDateTime.now());
-                jobMapper.updateById(job);
-                count++;
-            }
-        }
-        return count;
+
+        LambdaUpdateWrapper<Job> updateWrapper = new LambdaUpdateWrapper<Job>()
+                .in(Job::getId, ids)
+                .set(Job::getUpdatedAt, LocalDateTime.now());
+
+        if (isFavorited != null) updateWrapper.set(Job::getIsFavorited, isFavorited);
+        if (isHidden != null) updateWrapper.set(Job::getIsHidden, isHidden);
+        if (tagsJson != null) updateWrapper.set(Job::getTags, tagsJson);
+
+        return jobMapper.update(null, updateWrapper);
     }
 
     /**
@@ -382,12 +390,7 @@ public class JobServiceImpl extends ServiceImpl<JobMapper, Job> implements JobSe
     }
 
     /**
-     * 调用大模型对指定岗位进行简历匹配度智能诊断
-     * <p>
-     * 流程：
-     * 1. 查询职位 JD 和求职者简历；
-     * 2. 调用大模型分析匹配度，要求返回 JSON 包含 score(0-100), matchLevel(A/B/C), resultText；
-     * 3. 解析模型响应并持久化到 ai_job_result 表。
+     * 调用大模型对指定岗位进行简历匹配度智能诊断（使用 LlmResponseParser 鲁棒解析）
      *
      * @param jobId 职位 ID
      * @return 包含诊断结果实体的 Map
@@ -408,31 +411,18 @@ public class JobServiceImpl extends ServiceImpl<JobMapper, Job> implements JobSe
             Map<String, String> aiConfig = getActiveAiProfile();
             String resume = resumeService.getResumeText();
 
-            String systemPrompt = "You are a professional HR and technical interviewer. Analyze the job description against the user's resume. Return a JSON with score (0-100), matchLevel (A, B, C), and resultText.";
+            String systemPrompt = "You are a professional HR and technical interviewer. Analyze the job description against the user's resume. Return a JSON with score (0-100), matchLevel (A, B, C, D), and resultText.";
             String userPrompt = "Job Info: " + job.getTitle() + " - " + job.getRawData() + "\nResume: " + resume;
 
             String aiResponse = llmClient.callAI(systemPrompt, userPrompt, aiConfig.get("url"), aiConfig.get("key"), aiConfig.get("model"));
 
-            // 尝试解析大模型返回的 JSON 结构
-            try {
-                if (aiResponse.contains("```json")) {
-                    aiResponse = aiResponse.substring(aiResponse.indexOf("```json") + 7);
-                    if (aiResponse.contains("```")) {
-                        aiResponse = aiResponse.substring(0, aiResponse.indexOf("```"));
-                    }
-                }
-                JsonNode node = objectMapper.readTree(aiResponse.trim());
-                if (node.has("score")) result.setScore(node.get("score").asInt());
-                if (node.has("matchLevel")) result.setMatchLevel(node.get("matchLevel").asText());
-                if (node.has("resultText")) result.setResultText(node.get("resultText").asText());
-            } catch (Exception e) {
-                // 若未按照标准 JSON 返回，则将全部响应作为诊断建议，并赋予默认评分
-                result.setResultText(aiResponse);
-                result.setScore(80);
-                result.setMatchLevel("B");
-            }
-
+            // 使用 LlmResponseParser 鲁棒解析（支持 markdown 剥离、裸 JSON 匹配与语义正则兜底）
+            LlmResponseParser.DiagnosisResult parsed = LlmResponseParser.parseDiagnosis(aiResponse, objectMapper);
+            result.setScore(parsed.score());
+            result.setMatchLevel(parsed.matchLevel());
+            result.setResultText(parsed.resultText());
             result.setUpdatedAt(LocalDateTime.now());
+
             if (aiJobResultMapper.selectById(jobId) == null) {
                 aiJobResultMapper.insert(result);
             } else {
@@ -440,7 +430,8 @@ public class JobServiceImpl extends ServiceImpl<JobMapper, Job> implements JobSe
             }
 
         } catch (Exception e) {
-            throw new RuntimeException("AI Analysis failed: " + e.getMessage());
+            log.error("AI Analysis failed for jobId: {}", jobId, e);
+            throw new BusinessException(ResultCode.AI_SERVICE_ERROR, "AI Analysis failed: " + e.getMessage());
         }
 
         Map<String, Object> res = new HashMap<>();
@@ -449,7 +440,7 @@ public class JobServiceImpl extends ServiceImpl<JobMapper, Job> implements JobSe
     }
 
     /**
-     * 调用大模型为指定岗位生成针对性的招聘平台打招呼话术
+     * 调用大模型为指定岗位生成针对性的招聘平台打招呼话术（使用 LlmResponseParser 纯净化文本）
      *
      * @param jobId 职位 ID
      * @return 包含生成结果实体的 Map
@@ -457,7 +448,7 @@ public class JobServiceImpl extends ServiceImpl<JobMapper, Job> implements JobSe
     @Override
     public Map<String, Object> generateGreeting(String jobId) {
         Job job = jobMapper.selectById(jobId);
-        if (job == null) throw new RuntimeException("Job not found");
+        if (job == null) throw new BusinessException(ResultCode.JOB_NOT_FOUND);
 
         AiJobResult result = aiJobResultMapper.selectById(jobId);
         if (result == null) {
@@ -473,7 +464,8 @@ public class JobServiceImpl extends ServiceImpl<JobMapper, Job> implements JobSe
             String systemPrompt = "You are helping a candidate write a short, professional greeting message to a recruiter on a job platform. Keep it under 50 words.";
             String userPrompt = "Job: " + job.getTitle() + "\nResume: " + resume;
 
-            String intro = llmClient.callAI(systemPrompt, userPrompt, aiConfig.get("url"), aiConfig.get("key"), aiConfig.get("model"));
+            String rawIntro = llmClient.callAI(systemPrompt, userPrompt, aiConfig.get("url"), aiConfig.get("key"), aiConfig.get("model"));
+            String intro = LlmResponseParser.cleanText(rawIntro);
 
             result.setIntro(intro);
             result.setUpdatedAt(LocalDateTime.now());
@@ -484,7 +476,8 @@ public class JobServiceImpl extends ServiceImpl<JobMapper, Job> implements JobSe
                 aiJobResultMapper.updateById(result);
             }
         } catch (Exception e) {
-            throw new RuntimeException("AI Greeting failed: " + e.getMessage());
+            log.error("AI Greeting failed for jobId: {}", jobId, e);
+            throw new BusinessException(ResultCode.AI_SERVICE_ERROR, "AI Greeting failed: " + e.getMessage());
         }
 
         Map<String, Object> res = new HashMap<>();
@@ -493,7 +486,7 @@ public class JobServiceImpl extends ServiceImpl<JobMapper, Job> implements JobSe
     }
 
     /**
-     * 调用大模型结合职位 JD 与候选人简历预测 3-5 道深度面试题
+     * 调用大模型结合职位 JD 与候选人简历预测 3-5 道深度面试题（使用 LlmResponseParser 纯净化文本）
      *
      * @param jobId 职位 ID
      * @return 包含生成预测题目的 Map
@@ -501,7 +494,7 @@ public class JobServiceImpl extends ServiceImpl<JobMapper, Job> implements JobSe
     @Override
     public Map<String, Object> predictQuestions(String jobId) {
         Job job = jobMapper.selectById(jobId);
-        if (job == null) throw new RuntimeException("Job not found");
+        if (job == null) throw new BusinessException(ResultCode.JOB_NOT_FOUND);
 
         AiJobResult result = aiJobResultMapper.selectById(jobId);
         if (result == null) {
@@ -517,7 +510,8 @@ public class JobServiceImpl extends ServiceImpl<JobMapper, Job> implements JobSe
             String systemPrompt = "You are an expert interviewer. Based on the job description and the candidate's resume, predict 3-5 technical or behavioral questions that are likely to be asked.";
             String userPrompt = "Job: " + job.getTitle() + " - " + job.getRawData() + "\nResume: " + resume;
 
-            String predictedQuestions = llmClient.callAI(systemPrompt, userPrompt, aiConfig.get("url"), aiConfig.get("key"), aiConfig.get("model"));
+            String rawQuestions = llmClient.callAI(systemPrompt, userPrompt, aiConfig.get("url"), aiConfig.get("key"), aiConfig.get("model"));
+            String predictedQuestions = LlmResponseParser.cleanText(rawQuestions);
 
             result.setPredictedQuestions(predictedQuestions);
             result.setUpdatedAt(LocalDateTime.now());
@@ -528,7 +522,8 @@ public class JobServiceImpl extends ServiceImpl<JobMapper, Job> implements JobSe
                 aiJobResultMapper.updateById(result);
             }
         } catch (Exception e) {
-            throw new RuntimeException("AI Question Prediction failed: " + e.getMessage());
+            log.error("AI Question Prediction failed for jobId: {}", jobId, e);
+            throw new BusinessException(ResultCode.AI_SERVICE_ERROR, "AI Question Prediction failed: " + e.getMessage());
         }
 
         Map<String, Object> res = new HashMap<>();

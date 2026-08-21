@@ -26,12 +26,12 @@ public class DefaultCompanyProcessor extends AbstractCompanyProcessor {
     }
 
     @Override
-    protected String getStandardizedPlatform(String platform) {
+    public String getStandardizedPlatform(String platform) {
         return (platform == null || platform.isBlank() || "default".equalsIgnoreCase(platform)) ? "未知" : platform;
     }
 
     @Override
-    protected CompanyFieldsDTO extractFields(Map<?, ?> company, String platform) {
+    public CompanyFieldsDTO extractFields(Map<?, ?> company, String platform) {
         String cName = getString(company, "companyName", "公司名称");
         String cFullName = getString(company, "companyFullName", "公司全称");
         if (cFullName.isEmpty()) {

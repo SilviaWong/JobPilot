@@ -27,12 +27,12 @@ public class Job51CompanyProcessor extends AbstractCompanyProcessor {
     }
 
     @Override
-    protected String getStandardizedPlatform(String platform) {
+    public String getStandardizedPlatform(String platform) {
         return "前程无忧";
     }
 
     @Override
-    protected CompanyFieldsDTO extractFields(Map<?, ?> company, String platform) {
+    public CompanyFieldsDTO extractFields(Map<?, ?> company, String platform) {
         Map<?, ?> coInfo = getMap(company, "coinfo");
         if (coInfo.isEmpty()) coInfo = company;
 

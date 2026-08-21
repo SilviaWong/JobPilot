@@ -1,5 +1,6 @@
 package com.jobpilot.jobpilotserver.controller;
 
+import com.jobpilot.jobpilotserver.model.dto.SyncAllPayloadDTO;
 import com.jobpilot.jobpilotserver.service.DataSyncService;
 import org.springframework.web.bind.annotation.*;
 
@@ -30,8 +31,8 @@ public class DataSyncController {
      * 全量数据同步接口
      */
     @PostMapping("/sync-all")
-    public Map<String, Object> syncAll(@RequestBody Map<String, Object> payload) {
-        return dataSyncService.syncAll(payload);
+    public Map<String, Object> syncAll(@RequestBody(required = false) SyncAllPayloadDTO payload) {
+        return dataSyncService.syncAll(payload != null ? payload.toMap() : Map.of());
     }
 
     /**

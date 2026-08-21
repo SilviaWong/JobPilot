@@ -1,6 +1,7 @@
 package com.jobpilot.jobpilotserver.controller;
 
 import com.jobpilot.jobpilotserver.common.result.Result;
+import com.jobpilot.jobpilotserver.model.dto.*;
 import com.jobpilot.jobpilotserver.model.entity.Job;
 import com.jobpilot.jobpilotserver.service.JobService;
 import org.springframework.web.bind.annotation.*;
@@ -12,11 +13,11 @@ import java.util.Map;
 @RequestMapping("/api/jobs")
 public class JobController {
 
+    private final JobService jobService;
+
     public JobController(JobService jobService) {
         this.jobService = jobService;
     }
-
-    private final JobService jobService;
 
     @GetMapping
     public Result<List<Object>> getJobs(
@@ -42,35 +43,35 @@ public class JobController {
     }
 
     @PutMapping("/{id}/status")
-    public Result<Job> updateStatus(@PathVariable String id, @RequestBody Map<String, String> body) {
-        String status = body.get("status");
+    public Result<Job> updateStatus(@PathVariable String id, @RequestBody JobStatusUpdateRequest request) {
+        String status = request != null ? request.getStatus() : null;
         Job updated = jobService.updateJobStatus(id, status);
         return Result.success(updated);
     }
 
     @PutMapping("/{id}")
-    public Result<Job> updateAttributes(@PathVariable String id, @RequestBody Map<String, Object> body) {
-        Boolean isFavorited = body.containsKey("isFavorited") ? (Boolean) body.get("isFavorited") : null;
-        Boolean isHidden = body.containsKey("isHidden") ? (Boolean) body.get("isHidden") : null;
-        List<String> tags = body.containsKey("tags") ? (List<String>) body.get("tags") : null;
+    public Result<Job> updateAttributes(@PathVariable String id, @RequestBody JobAttributesUpdateRequest request) {
+        Boolean isFavorited = request != null ? request.getIsFavorited() : null;
+        Boolean isHidden = request != null ? request.getIsHidden() : null;
+        List<String> tags = request != null ? request.getTags() : null;
 
         Job updated = jobService.updateJobAttributes(id, isFavorited, isHidden, tags);
         return Result.success(updated);
     }
 
     @PutMapping("/batch")
-    public Result<Map<String, Object>> batchUpdate(@RequestBody Map<String, Object> body) {
-        List<String> ids = (List<String>) body.get("ids");
-        Boolean isFavorited = (Boolean) body.get("isFavorited");
-        Boolean isHidden = (Boolean) body.get("isHidden");
-        List<String> tags = (List<String>) body.get("tags");
+    public Result<Map<String, Object>> batchUpdate(@RequestBody JobBatchUpdateRequest request) {
+        List<String> ids = request != null ? request.getIds() : null;
+        Boolean isFavorited = request != null ? request.getIsFavorited() : null;
+        Boolean isHidden = request != null ? request.getIsHidden() : null;
+        List<String> tags = request != null ? request.getTags() : null;
         int count = jobService.batchUpdate(ids, isFavorited, isHidden, tags);
         return Result.success(Map.of("count", count));
     }
 
     @DeleteMapping("/batch")
-    public Result<Map<String, Object>> batchDelete(@RequestBody Map<String, Object> body) {
-        List<String> ids = (List<String>) body.get("ids");
+    public Result<Map<String, Object>> batchDelete(@RequestBody BatchIdsRequest request) {
+        List<String> ids = request != null ? request.getIds() : null;
         int count = jobService.batchDelete(ids);
         return Result.success(Map.of("count", count));
     }
@@ -85,22 +86,22 @@ public class JobController {
     }
 
     @PostMapping("/analyze")
-    public Result<Object> analyzeJob(@RequestBody Map<String, String> body) {
-        String jobId = body.get("jobId");
+    public Result<Object> analyzeJob(@RequestBody JobAiAnalyzeRequest request) {
+        String jobId = request != null ? request.getJobId() : null;
         Map<String, Object> res = jobService.analyzeJob(jobId);
         return Result.success(res.get("data"));
     }
 
     @PostMapping("/generate-greeting")
-    public Result<Object> generateGreeting(@RequestBody Map<String, String> body) {
-        String jobId = body.get("jobId");
+    public Result<Object> generateGreeting(@RequestBody JobAiAnalyzeRequest request) {
+        String jobId = request != null ? request.getJobId() : null;
         Map<String, Object> res = jobService.generateGreeting(jobId);
         return Result.success(res.get("data"));
     }
 
     @PostMapping("/predict-questions")
-    public Result<Object> predictQuestions(@RequestBody Map<String, String> body) {
-        String jobId = body.get("jobId");
+    public Result<Object> predictQuestions(@RequestBody JobAiAnalyzeRequest request) {
+        String jobId = request != null ? request.getJobId() : null;
         Map<String, Object> res = jobService.predictQuestions(jobId);
         return Result.success(res.get("data"));
     }

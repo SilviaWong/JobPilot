@@ -126,12 +126,14 @@ public abstract class AbstractCompanyProcessor implements CompanyProcessorStrate
     /**
      * 子类必须实现的平台特定字段提取钩子
      */
-    protected abstract CompanyFieldsDTO extractFields(Map<?, ?> company, String platform);
+    @Override
+    public abstract CompanyFieldsDTO extractFields(Map<?, ?> company, String platform);
 
     /**
      * 平台名称标准化钩子（子类可按需重写）
      */
-    protected String getStandardizedPlatform(String platform) {
+    @Override
+    public String getStandardizedPlatform(String platform) {
         return platform;
     }
 

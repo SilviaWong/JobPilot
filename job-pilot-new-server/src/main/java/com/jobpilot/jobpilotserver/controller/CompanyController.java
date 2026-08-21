@@ -1,6 +1,8 @@
 package com.jobpilot.jobpilotserver.controller;
 
 import com.jobpilot.jobpilotserver.common.result.Result;
+import com.jobpilot.jobpilotserver.model.dto.CompanyBlacklistRequest;
+import com.jobpilot.jobpilotserver.model.dto.CompanyMergeRequest;
 import com.jobpilot.jobpilotserver.model.entity.BlacklistedCompany;
 import com.jobpilot.jobpilotserver.model.entity.Company;
 import com.jobpilot.jobpilotserver.service.CompanyService;
@@ -42,9 +44,9 @@ public class CompanyController {
     }
 
     @PostMapping("/blacklist")
-    public Result<Boolean> addBlacklist(@RequestBody Map<String, String> body) {
-        String companyName = body.get("companyName");
-        String reason = body.get("reason");
+    public Result<Boolean> addBlacklist(@RequestBody CompanyBlacklistRequest request) {
+        String companyName = request != null ? request.getCompanyName() : null;
+        String reason = request != null ? request.getReason() : null;
         return Result.success(companyService.addBlacklist(companyName, reason));
     }
 
@@ -54,9 +56,9 @@ public class CompanyController {
     }
 
     @PostMapping("/merge")
-    public Result<Boolean> mergeCompanies(@RequestBody Map<String, Object> body) {
-        String targetName = (String) body.get("targetName");
-        List<String> sourceNames = (List<String>) body.get("sourceNames");
+    public Result<Boolean> mergeCompanies(@RequestBody CompanyMergeRequest request) {
+        String targetName = request != null ? request.getTargetName() : null;
+        List<String> sourceNames = request != null ? request.getSourceNames() : null;
         return Result.success(companyService.mergeCompanies(targetName, sourceNames));
     }
 }

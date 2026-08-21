@@ -30,12 +30,12 @@ public class ZhilianCompanyProcessor extends AbstractCompanyProcessor {
     }
 
     @Override
-    protected String getStandardizedPlatform(String platform) {
+    public String getStandardizedPlatform(String platform) {
         return "智联";
     }
 
     @Override
-    protected CompanyFieldsDTO extractFields(Map<?, ?> company, String platform) {
+    public CompanyFieldsDTO extractFields(Map<?, ?> company, String platform) {
         Map<?, ?> businessInformation = getMap(company, "businessInformation");
         Map<?, ?> businessInformationData = getMap(businessInformation, "businessInformationData");
 

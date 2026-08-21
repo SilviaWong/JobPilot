@@ -32,4 +32,15 @@ public class CacheConfig {
                 .maximumSize(50)
                 .build();
     }
+
+    /**
+     * 企业并查集别名模型本地缓存 (写入后30分钟过期，别名变更时主动失效)
+     */
+    @Bean("companyDsuCache")
+    public Cache<String, com.jobpilot.jobpilotserver.strategy.algorithm.CompanyDisjointSet> companyDsuCache() {
+        return Caffeine.newBuilder()
+                .expireAfterWrite(30, TimeUnit.MINUTES)
+                .maximumSize(10)
+                .build();
+    }
 }

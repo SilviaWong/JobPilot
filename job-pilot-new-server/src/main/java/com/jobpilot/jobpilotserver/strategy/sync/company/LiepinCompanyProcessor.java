@@ -33,12 +33,12 @@ public class LiepinCompanyProcessor extends AbstractCompanyProcessor {
     }
 
     @Override
-    protected String getStandardizedPlatform(String platform) {
+    public String getStandardizedPlatform(String platform) {
         return "猎聘";
     }
 
     @Override
-    protected CompanyFieldsDTO extractFields(Map<?, ?> company, String platform) {
+    public CompanyFieldsDTO extractFields(Map<?, ?> company, String platform) {
         String cName = getString(company, "compName", "公司名称", "companyName", "公司简称");
         String cFullName = getString(company, "compFullName", "公司全称", "companyFullName");
         if (cFullName.isEmpty()) {

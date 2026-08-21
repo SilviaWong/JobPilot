@@ -20,13 +20,18 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.springframework.beans.factory.annotation.Qualifier;
+
+import java.util.stream.Collectors;
+
 /**
  * 企业与黑名单管理业务实现类
  * <p>
  * 主要职责：
- * 1. 提供基于并查集（Disjoint-Set / DSU）算法的企业别名聚类归一化与分页查询；
+ * 1. 提供基于并查集（Disjoint-Set / DSU）算法的企业别名聚类归一化与高效物理分页查询；
  * 2. 维护企业黑名单列表（支持增删及 Caffeine 本地缓存的主动失效）；
- * 3. 维护企业主体合并关系与别名映射表。
+ * 3. 维护企业主体合并关系与别名映射表（变更时自动刷新 DSU 本地缓存）。
  */
 @Service
 public class CompanyServiceImpl extends ServiceImpl<CompanyMapper, Company> implements CompanyService {
@@ -35,73 +40,76 @@ public class CompanyServiceImpl extends ServiceImpl<CompanyMapper, Company> impl
     private final BlacklistedCompanyMapper blacklistedCompanyMapper;
     private final CompanyAliasMapper companyAliasMapper;
     private final Cache<String, Set<String>> blacklistedCompanyCache;
+    private final Cache<String, CompanyDisjointSet> companyDsuCache;
 
     public CompanyServiceImpl(ObjectMapper objectMapper,
                               BlacklistedCompanyMapper blacklistedCompanyMapper,
                               CompanyAliasMapper companyAliasMapper,
-                              Cache<String, Set<String>> blacklistedCompanyCache) {
+                              @Qualifier("blacklistedCompanyCache") Cache<String, Set<String>> blacklistedCompanyCache,
+                              @Qualifier("companyDsuCache") Cache<String, CompanyDisjointSet> companyDsuCache) {
         this.objectMapper = objectMapper;
         this.blacklistedCompanyMapper = blacklistedCompanyMapper;
         this.companyAliasMapper = companyAliasMapper;
         this.blacklistedCompanyCache = blacklistedCompanyCache;
+        this.companyDsuCache = companyDsuCache;
     }
 
     /**
-     * 分页查询企业列表（基于并查集进行别名聚类归一化）
-     * <p>
-     * 算法与处理流程：
-     * 1. 从别名映射表中加载所有别名与标准名称的关联，初始化构建并查集结构；
-     * 2. 遍历所有原始企业，通过并查集查找各企业所属的规范主体根名称（Canonical Name）；
-     * 3. 归并同主体的企业记录，聚合成统一的 CompanyVO；
-     * 4. 针对搜索关键字进行不区分大小写的模糊过滤；
-     * 5. 内存级分页切片并返回结果集。
+     * 获取或构建并查集别名模型（优先命中 Caffeine 本地缓存）
+     */
+    private CompanyDisjointSet getOrBuildDsu() {
+        return companyDsuCache.get("global_company_dsu", k -> {
+            log.debug("Building CompanyDisjointSet model into Caffeine cache...");
+            CompanyDisjointSet dsu = new CompanyDisjointSet();
+            List<CompanyAlias> aliasList = companyAliasMapper.selectList(null);
+            for (CompanyAlias alias : aliasList) {
+                dsu.union(alias.getAliasName(), alias.getCanonicalName());
+            }
+            return dsu;
+        });
+    }
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CompanyServiceImpl.class);
+
+    /**
+     * 分页查询企业列表（基于 SQL 物理分页 + Caffeine 缓存 DSU 主体归一化）
      *
      * @param page 页码（从 1 开始）
      * @param pageSize 每页条数
-     * @param query 搜索关键词（企业名称模糊匹配）
+     * @param query 搜索关键词（企业名称或全称模糊匹配）
      * @return 包含 data 列表和 total 总记录数的 Map
      */
     @Override
     public Map<String, Object> getCompanies(int page, int pageSize, String query) {
-        // 1. 初始化并查集并加载企业别名拓扑关系
-        CompanyDisjointSet dsu = new CompanyDisjointSet();
-        List<CompanyAlias> aliasList = companyAliasMapper.selectList(null);
-        for (CompanyAlias alias : aliasList) {
-            dsu.union(alias.getAliasName(), alias.getCanonicalName());
-        }
+        Page<Company> companyPage = new Page<>(page, pageSize);
+        LambdaQueryWrapper<Company> queryWrapper = new LambdaQueryWrapper<>();
 
-        // 2. 查询全部企业并进行主体归并
-        List<Company> allCompanies = list();
-        Map<String, CompanyVO> aggregatedMap = new HashMap<>();
-
-        for (Company company : allCompanies) {
-            // 通过并查集寻根，获取该企业的规范主体名称
-            String rootName = dsu.find(company.getCompanyName());
-            CompanyVO vo = aggregatedMap.get(rootName);
-            if (vo == null) {
-                vo = new CompanyVO();
-                BeanUtils.copyProperties(company, vo);
-                vo.setCompanyName(rootName); // 统一展示为规范主体名称
-                aggregatedMap.put(rootName, vo);
-            }
-        }
-
-        // 3. 关键字过滤
-        List<CompanyVO> resultList = new ArrayList<>(aggregatedMap.values());
         if (query != null && !query.trim().isEmpty()) {
-            String q = query.toLowerCase();
-            resultList.removeIf(c -> c.getCompanyName() == null || !c.getCompanyName().toLowerCase().contains(q));
+            String q = query.trim();
+            queryWrapper.and(w -> w.like(Company::getCompanyName, q)
+                    .or()
+                    .like(Company::getCompanyFullName, q));
         }
 
-        // 4. 计算分页切片
-        int total = resultList.size();
-        int fromIndex = Math.min((page - 1) * pageSize, total);
-        int toIndex = Math.min(fromIndex + pageSize, total);
-        List<CompanyVO> pageData = resultList.subList(fromIndex, toIndex);
+        queryWrapper.orderByDesc(Company::getUpdatedAt);
+
+        Page<Company> resultPage = page(companyPage, queryWrapper);
+        CompanyDisjointSet dsu = getOrBuildDsu();
+
+        List<CompanyVO> voList = resultPage.getRecords().stream().map(company -> {
+            CompanyVO vo = new CompanyVO();
+            BeanUtils.copyProperties(company, vo);
+            String canonicalName = dsu.find(company.getCompanyName());
+            if (canonicalName != null && !canonicalName.isEmpty()) {
+                vo.setCompanyName(canonicalName);
+            }
+            return vo;
+        }).collect(Collectors.toList());
 
         Map<String, Object> res = new HashMap<>();
-        res.put("data", pageData);
-        res.put("total", total);
+        res.put("data", voList);
+        res.put("total", (int) resultPage.getTotal());
+        res.put("hasMore", (page * pageSize) < resultPage.getTotal());
         return res;
     }
 
@@ -204,6 +212,8 @@ public class CompanyServiceImpl extends ServiceImpl<CompanyMapper, Company> impl
                 companyAliasMapper.insert(alias);
             }
         }
+        // 别名拓扑发生变更，强制失效 DSU 本地缓存
+        companyDsuCache.invalidateAll();
         return true;
     }
 }
