@@ -2,8 +2,6 @@ package com.jobpilot.jobpilotserver.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.jobpilot.jobpilotserver.model.entity.Job;
-import com.jobpilot.jobpilotserver.model.vo.JobDetailVO;
-import com.jobpilot.jobpilotserver.model.vo.NormalizedJobDataVO;
 
 import java.util.List;
 import java.util.Map;

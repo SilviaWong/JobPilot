@@ -15,7 +15,6 @@ import com.jobpilot.jobpilotserver.service.JobService;
 import com.jobpilot.jobpilotserver.service.ResumeService;
 import com.jobpilot.jobpilotserver.strategy.llm.LlmClient;
 import com.jobpilot.jobpilotserver.strategy.normalizer.JobNormalizerFactory;
-import com.jobpilot.jobpilotserver.strategy.normalizer.JobNormalizerStrategy;
 import com.jobpilot.jobpilotserver.util.LlmResponseParser;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.jobpilot.jobpilotserver.common.exception.BusinessException;

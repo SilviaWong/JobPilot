@@ -6,7 +6,6 @@ import com.jobpilot.jobpilotserver.mapper.JobDetailMapper;
 import com.jobpilot.jobpilotserver.mapper.JobMapper;
 import com.jobpilot.jobpilotserver.mapper.ZhilianEnrichmentCacheMapper;
 import com.jobpilot.jobpilotserver.model.entity.Job;
-import com.jobpilot.jobpilotserver.model.entity.JobDetail;
 import com.jobpilot.jobpilotserver.model.entity.ZhilianEnrichmentCache;
 import com.jobpilot.jobpilotserver.service.impl.DataSyncServiceImpl;
 import com.jobpilot.jobpilotserver.strategy.sync.company.CompanyProcessorFactory;
