@@ -22,4 +22,9 @@ public class DashboardController {
     public Result<Map<String, Object>> getDashboard() {
         return Result.success(dashboardService.getDashboardStats());
     }
+
+    @GetMapping("/funnel")
+    public Result<Map<String, Object>> getFunnel() {
+        return Result.success(dashboardService.getFunnelAnalytics());
+    }
 }

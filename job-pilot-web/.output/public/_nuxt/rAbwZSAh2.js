@@ -1,1 +1,0 @@
-import{V as e,h as t}from"./v3hOaweP.js";import{g as n}from"./BvC03LXc.js";import"./Cf3nEU3t2.js";var r={__name:`index`,setup(r){return n(`/jobs`),(n,r)=>(e(),t(`div`))}};export{r as default};

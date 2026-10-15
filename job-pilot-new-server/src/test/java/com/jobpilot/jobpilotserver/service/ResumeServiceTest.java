@@ -6,6 +6,7 @@ import com.jobpilot.jobpilotserver.service.impl.ResumeServiceImpl;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -34,7 +35,21 @@ public class ResumeServiceTest {
                 }
         );
 
-        ResumeServiceImpl service = new ResumeServiceImpl(mapper);
+        com.jobpilot.jobpilotserver.service.ResumeProfileService profileService = (com.jobpilot.jobpilotserver.service.ResumeProfileService) Proxy.newProxyInstance(
+                com.jobpilot.jobpilotserver.service.ResumeProfileService.class.getClassLoader(),
+                new Class<?>[]{com.jobpilot.jobpilotserver.service.ResumeProfileService.class},
+                (proxy, method, args) -> {
+                    if ("getDefaultResumeContent".equals(method.getName())) {
+                        Resume r = stored.get();
+                        return r != null ? r.getResume() : "";
+                    } else if ("getProfiles".equals(method.getName())) {
+                        return Collections.emptyList();
+                    }
+                    return null;
+                }
+        );
+
+        ResumeServiceImpl service = new ResumeServiceImpl(mapper, profileService);
 
         // 1. Initial get creates default empty resume
         Map<String, Object> initial = service.getResume();

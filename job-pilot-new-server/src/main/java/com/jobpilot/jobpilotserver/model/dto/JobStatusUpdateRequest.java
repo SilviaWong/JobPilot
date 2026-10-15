@@ -5,11 +5,17 @@ package com.jobpilot.jobpilotserver.model.dto;
  */
 public class JobStatusUpdateRequest {
     private String status;
+    private String note;
 
     public JobStatusUpdateRequest() {}
 
     public JobStatusUpdateRequest(String status) {
         this.status = status;
+    }
+
+    public JobStatusUpdateRequest(String status, String note) {
+        this.status = status;
+        this.note = note;
     }
 
     public String getStatus() {
@@ -18,5 +24,13 @@ public class JobStatusUpdateRequest {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getNote() {
+        return note;
+    }
+
+    public void setNote(String note) {
+        this.note = note;
     }
 }

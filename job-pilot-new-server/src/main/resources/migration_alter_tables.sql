@@ -25,3 +25,30 @@ ALTER TABLE "Company" ADD COLUMN "scale" TEXT;
 ALTER TABLE "Company" ADD COLUMN "stage" TEXT;
 ALTER TABLE "Company" ADD COLUMN "companyDesc" TEXT;
 ALTER TABLE "Company" ADD COLUMN "welfare" TEXT;
+ALTER TABLE "Company" ADD COLUMN "companyType" TEXT;
+ALTER TABLE "Company" ADD COLUMN "creditCode" TEXT;
+ALTER TABLE "Company" ADD COLUMN "logo" TEXT;
+ALTER TABLE "Company" ADD COLUMN "welfareList" TEXT;
+ALTER TABLE "Company" ADD COLUMN "rawData3" TEXT;
+
+-- 3. 多版本简历与看板流转日志表
+CREATE TABLE IF NOT EXISTS "resume_profiles" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "title" TEXT NOT NULL,
+    "targetRole" TEXT,
+    "tags" TEXT,
+    "content" TEXT NOT NULL,
+    "isDefault" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "job_status_logs" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "jobRecordId" TEXT NOT NULL,
+    "fromStatus" TEXT NOT NULL,
+    "toStatus" TEXT NOT NULL,
+    "note" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "job_status_logs_jobRecordId_fkey" FOREIGN KEY ("jobRecordId") REFERENCES "Job" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);

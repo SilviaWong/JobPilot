@@ -9,6 +9,7 @@ public class Result<T> {
     private String error;
     private Long total;
     private Boolean hasMore;
+    private Object stats;
 
     public Boolean getSuccess() { return success; }
     public void setSuccess(Boolean success) { this.success = success; }
@@ -22,11 +23,21 @@ public class Result<T> {
     public void setTotal(Long total) { this.total = total; }
     public Boolean getHasMore() { return hasMore; }
     public void setHasMore(Boolean hasMore) { this.hasMore = hasMore; }
+    public Object getStats() { return stats; }
+    public void setStats(Object stats) { this.stats = stats; }
 
     public static <T> Result<T> success(T data) {
         Result<T> r = new Result<>();
         r.setSuccess(true);
         r.setData(data);
+        return r;
+    }
+
+    public static <T> Result<T> success(T data, Object stats) {
+        Result<T> r = new Result<>();
+        r.setSuccess(true);
+        r.setData(data);
+        r.setStats(stats);
         return r;
     }
 

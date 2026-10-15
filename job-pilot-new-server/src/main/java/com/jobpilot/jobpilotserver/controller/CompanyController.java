@@ -25,12 +25,26 @@ public class CompanyController {
     public Result<List<Object>> getCompanies(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) String query) {
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false, defaultValue = "normal") String status,
+            @RequestParam(required = false, defaultValue = "direct") String agencyFilter,
+            @RequestParam(required = false, defaultValue = "all") String platformFilter,
+            @RequestParam(required = false, defaultValue = "all") String city,
+            @RequestParam(required = false) String cityFilter) {
 
-        Map<String, Object> res = companyService.getCompanies(page, pageSize, query);
+        String effectiveCity = (cityFilter != null && !cityFilter.isEmpty() && !"all".equalsIgnoreCase(cityFilter)) ? cityFilter : city;
+        Map<String, Object> res = companyService.getCompanies(page, pageSize, query, status, agencyFilter, platformFilter, effectiveCity);
         List<Object> data = (List<Object>) res.get("data");
         Integer total = (Integer) res.get("total");
-        return Result.success(data, total != null ? total.longValue() : 0L, null);
+        return Result.success(data, total != null ? total.longValue() : 0L, (Boolean) res.get("hasMore"));
+    }
+
+    @PutMapping("/agency")
+    public Result<Boolean> putAgency(@RequestBody Map<String, Object> body) {
+        String companyName = body != null ? (String) body.get("companyName") : null;
+        Boolean isAgency = body != null && body.get("isAgency") != null ? (Boolean) body.get("isAgency") : false;
+        boolean success = companyService.putAgency(companyName, isAgency);
+        return Result.success(success);
     }
 
     @GetMapping("/all")

@@ -19,7 +19,10 @@ public enum ResultCode {
 
     // 数据同步错误码 (3000+)
     SYNC_PAYLOAD_INVALID(3001, "数据同步载荷格式非法"),
-    NORMALIZATION_ERROR(3002, "数据标准化清洗失败");
+    NORMALIZATION_ERROR(3002, "数据标准化清洗失败"),
+
+    // 通用操作错误码 (5000+)
+    OPERATION_FAILED(5001, "操作失败");
 
     private final int code;
     private final String message;

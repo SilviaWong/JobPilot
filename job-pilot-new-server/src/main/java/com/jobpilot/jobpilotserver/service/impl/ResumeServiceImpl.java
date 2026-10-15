@@ -4,10 +4,12 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jobpilot.jobpilotserver.mapper.ResumeMapper;
 import com.jobpilot.jobpilotserver.model.entity.Resume;
 import com.jobpilot.jobpilotserver.service.ResumeService;
+import com.jobpilot.jobpilotserver.service.ResumeProfileService;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -18,32 +20,25 @@ import java.util.Map;
 public class ResumeServiceImpl extends ServiceImpl<ResumeMapper, Resume> implements ResumeService {
 
     private final ResumeMapper resumeMapper;
+    private final ResumeProfileService resumeProfileService;
 
-    public ResumeServiceImpl(ResumeMapper resumeMapper) {
+    public ResumeServiceImpl(ResumeMapper resumeMapper, ResumeProfileService resumeProfileService) {
         this.resumeMapper = resumeMapper;
+        this.resumeProfileService = resumeProfileService;
     }
 
     /**
      * 获取求职者个人简历信息
-     * 若数据库暂无记录，则初始化一条空简历默认记录。
+     * 若数据库暂无记录，则优先从多版本简历画像或 AiSettings 读取。
      */
     @Override
     public Map<String, Object> getResume() {
-        Resume resume = resumeMapper.selectById("default");
-        if (resume == null) {
-            resume = new Resume();
-            resume.setId("default");
-            resume.setResume("");
-            resume.setCreatedAt(LocalDateTime.now());
-            resume.setUpdatedAt(LocalDateTime.now());
-            resumeMapper.insert(resume);
-        }
-
+        String content = resumeProfileService.getDefaultResumeContent();
         Map<String, Object> res = new HashMap<>();
-        res.put("id", resume.getId());
-        res.put("resume", resume.getResume() != null ? resume.getResume() : "");
-        res.put("createdAt", resume.getCreatedAt());
-        res.put("updatedAt", resume.getUpdatedAt());
+        res.put("id", "default");
+        res.put("resume", content != null ? content : "");
+        res.put("createdAt", LocalDateTime.now());
+        res.put("updatedAt", LocalDateTime.now());
         return res;
     }
 
@@ -54,23 +49,40 @@ public class ResumeServiceImpl extends ServiceImpl<ResumeMapper, Resume> impleme
      */
     @Override
     public Map<String, Object> updateResume(Map<String, Object> body) {
-        Resume resume = resumeMapper.selectById("default");
-        if (resume == null) {
-            resume = new Resume();
-            resume.setId("default");
-            resume.setCreatedAt(LocalDateTime.now());
-        }
+        String content = body != null ? (String) body.get("resume") : "";
+        if (content == null) content = "";
 
-        if (body.containsKey("resume")) {
-            resume.setResume((String) body.get("resume"));
-        }
-        resume.setUpdatedAt(LocalDateTime.now());
-
-        if (resumeMapper.selectById("default") == null) {
-            resumeMapper.insert(resume);
+        // 更新多版本简历中的默认简历
+        List<Map<String, Object>> profiles = resumeProfileService.getProfiles();
+        if (profiles.isEmpty()) {
+            Map<String, Object> createBody = new HashMap<>();
+            createBody.put("title", "通用主简历 (默认)");
+            createBody.put("targetRole", "Java开发工程师");
+            createBody.put("content", content);
+            createBody.put("isDefault", true);
+            resumeProfileService.createProfile(createBody);
         } else {
-            resumeMapper.updateById(resume);
+            String defaultId = (String) profiles.get(0).get("id");
+            Map<String, Object> updateBody = new HashMap<>();
+            updateBody.put("content", content);
+            resumeProfileService.updateProfile(defaultId, updateBody);
         }
+
+        try {
+            Resume resume = resumeMapper.selectById("default");
+            if (resume == null) {
+                resume = new Resume();
+                resume.setId("default");
+                resume.setResume(content);
+                resume.setCreatedAt(LocalDateTime.now());
+                resume.setUpdatedAt(LocalDateTime.now());
+                resumeMapper.insert(resume);
+            } else {
+                resume.setResume(content);
+                resume.setUpdatedAt(LocalDateTime.now());
+                resumeMapper.updateById(resume);
+            }
+        } catch (Exception ignored) {}
 
         return getResume();
     }
@@ -82,7 +94,7 @@ public class ResumeServiceImpl extends ServiceImpl<ResumeMapper, Resume> impleme
      */
     @Override
     public String getResumeText() {
-        Resume resume = resumeMapper.selectById("default");
-        return (resume != null && resume.getResume() != null) ? resume.getResume() : "";
+        String content = resumeProfileService.getDefaultResumeContent();
+        return content != null ? content : "";
     }
 }

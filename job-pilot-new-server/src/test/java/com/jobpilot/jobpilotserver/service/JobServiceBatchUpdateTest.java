@@ -72,6 +72,8 @@ public class JobServiceBatchUpdateTest {
                 detailMapper,
                 null,
                 null,
+                null,
+                null,
                 new LlmClient(),
                 new ObjectMapper(),
                 new JobNormalizerFactory(Collections.emptyList()),

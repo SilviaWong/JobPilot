@@ -38,12 +38,33 @@ public class Company {
     private String rawData;
     /** 辅助原始 JSON 数据 */
     private String rawData2;
+    /** 企业性质 */
+    private String companyType;
+    /** 统一社会信用代码 */
+    private String creditCode;
+    /** 企业Logo */
+    private String logo;
+    /** 福利标签 (JSON 数组字符串) */
+    private String welfareList;
+    /** 来源3辅助详情原始快照 */
+    private String rawData3;
     /** 是否为代招/猎头机构 */
     private Boolean isAgency;
     /** 创建时间 */
     private LocalDateTime createdAt;
     /** 更新时间 */
     private LocalDateTime updatedAt;
+
+    public String getCompanyType() { return companyType; }
+    public void setCompanyType(String companyType) { this.companyType = companyType; }
+    public String getCreditCode() { return creditCode; }
+    public void setCreditCode(String creditCode) { this.creditCode = creditCode; }
+    public String getLogo() { return logo; }
+    public void setLogo(String logo) { this.logo = logo; }
+    public String getWelfareList() { return welfareList; }
+    public void setWelfareList(String welfareList) { this.welfareList = welfareList; }
+    public String getRawData3() { return rawData3; }
+    public void setRawData3(String rawData3) { this.rawData3 = rawData3; }
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }

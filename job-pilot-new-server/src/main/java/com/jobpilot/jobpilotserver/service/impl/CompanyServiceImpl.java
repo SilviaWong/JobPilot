@@ -25,6 +25,15 @@ import org.springframework.beans.factory.annotation.Qualifier;
 
 import java.util.stream.Collectors;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.jobpilot.jobpilotserver.mapper.AiJobResultMapper;
+import com.jobpilot.jobpilotserver.mapper.JobMapper;
+import com.jobpilot.jobpilotserver.model.entity.AiJobResult;
+import com.jobpilot.jobpilotserver.model.entity.Job;
+import org.springframework.transaction.annotation.Transactional;
+
 /**
  * 企业与黑名单管理业务实现类
  * <p>
@@ -39,19 +48,34 @@ public class CompanyServiceImpl extends ServiceImpl<CompanyMapper, Company> impl
     private final ObjectMapper objectMapper;
     private final BlacklistedCompanyMapper blacklistedCompanyMapper;
     private final CompanyAliasMapper companyAliasMapper;
+    private final JobMapper jobMapper;
+    private final AiJobResultMapper aiJobResultMapper;
     private final Cache<String, Set<String>> blacklistedCompanyCache;
     private final Cache<String, CompanyDisjointSet> companyDsuCache;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public CompanyServiceImpl(ObjectMapper objectMapper,
+                              BlacklistedCompanyMapper blacklistedCompanyMapper,
+                              CompanyAliasMapper companyAliasMapper,
+                              JobMapper jobMapper,
+                              AiJobResultMapper aiJobResultMapper,
+                              @Qualifier("blacklistedCompanyCache") Cache<String, Set<String>> blacklistedCompanyCache,
+                              @Qualifier("companyDsuCache") Cache<String, CompanyDisjointSet> companyDsuCache) {
+        this.objectMapper = objectMapper;
+        this.blacklistedCompanyMapper = blacklistedCompanyMapper;
+        this.companyAliasMapper = companyAliasMapper;
+        this.jobMapper = jobMapper;
+        this.aiJobResultMapper = aiJobResultMapper;
+        this.blacklistedCompanyCache = blacklistedCompanyCache;
+        this.companyDsuCache = companyDsuCache;
+    }
 
     public CompanyServiceImpl(ObjectMapper objectMapper,
                               BlacklistedCompanyMapper blacklistedCompanyMapper,
                               CompanyAliasMapper companyAliasMapper,
                               @Qualifier("blacklistedCompanyCache") Cache<String, Set<String>> blacklistedCompanyCache,
                               @Qualifier("companyDsuCache") Cache<String, CompanyDisjointSet> companyDsuCache) {
-        this.objectMapper = objectMapper;
-        this.blacklistedCompanyMapper = blacklistedCompanyMapper;
-        this.companyAliasMapper = companyAliasMapper;
-        this.blacklistedCompanyCache = blacklistedCompanyCache;
-        this.companyDsuCache = companyDsuCache;
+        this(objectMapper, blacklistedCompanyMapper, companyAliasMapper, null, null, blacklistedCompanyCache, companyDsuCache);
     }
 
     /**
@@ -71,46 +95,441 @@ public class CompanyServiceImpl extends ServiceImpl<CompanyMapper, Company> impl
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CompanyServiceImpl.class);
 
-    /**
-     * 分页查询企业列表（基于 SQL 物理分页 + Caffeine 缓存 DSU 主体归一化）
-     *
-     * @param page 页码（从 1 开始）
-     * @param pageSize 每页条数
-     * @param query 搜索关键词（企业名称或全称模糊匹配）
-     * @return 包含 data 列表和 total 总记录数的 Map
-     */
-    @Override
-    public Map<String, Object> getCompanies(int page, int pageSize, String query) {
-        Page<Company> companyPage = new Page<>(page, pageSize);
-        LambdaQueryWrapper<Company> queryWrapper = new LambdaQueryWrapper<>();
+    public static String cleanCompanyName(String str) {
+        if (str == null) return "";
+        String res = str.trim();
+        return res.replace("（", "(")
+                .replace("）", ")")
+                .replaceAll("\\s+", "");
+    }
 
-        if (query != null && !query.trim().isEmpty()) {
-            String q = query.trim();
-            queryWrapper.and(w -> w.like(Company::getCompanyName, q)
-                    .or()
-                    .like(Company::getCompanyFullName, q));
+    private boolean isSourceDataHeadhunter(String platform, String rawData) {
+        if (rawData == null || rawData.trim().isEmpty()) return false;
+        try {
+            JsonNode raw = objectMapper.readTree(rawData);
+            if ("Boss直聘".equals(platform)) {
+                boolean proxyJob = raw.path("proxyJob").asInt(0) == 1
+                        || raw.path("zpData").path("jobInfo").path("proxyJob").asInt(0) == 1;
+                String jobType = raw.path("岗位类型_外包猎头").asText("");
+                return proxyJob || jobType.contains("猎头");
+            }
+            if ("猎聘".equals(platform)) {
+                String jk = raw.path("job").path("jobKind").asText();
+                if (jk.isEmpty()) jk = raw.path("jobKind").asText();
+                String jobType = raw.path("岗位类型_外包猎头").asText("");
+                return "1".equals(jk) || "猎头/代招".equals(jobType);
+            }
+            if ("智联".equals(platform) || "智联招聘".equals(platform)) {
+                int proxy = raw.path("proxyModel").path("recruitPosition").asInt(0);
+                int jobType = raw.path("jobType").asInt(0);
+                return proxy > 0 || jobType > 0;
+            }
+            if ("51job".equals(platform) || "前程无忧".equals(platform)) {
+                String jt = raw.path("jobType").asText("");
+                String ct = raw.path("companyTypeString").asText("");
+                return "1".equals(jt) || "2".equals(jt) || "中介".equals(ct);
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    @Override
+    @Transactional
+    public boolean putAgency(String companyName, boolean isAgency) {
+        if (companyName == null || companyName.trim().isEmpty()) {
+            return false;
+        }
+        boolean agencyFlag = isAgency;
+
+        // 1. 查找是否存在该公司的记录
+        List<Company> existingCompanies = list(new QueryWrapper<Company>()
+                .eq("companyName", companyName)
+                .or()
+                .eq("companyFullName", companyName));
+
+        if (!existingCompanies.isEmpty()) {
+            for (Company c : existingCompanies) {
+                c.setIsAgency(agencyFlag);
+                if (agencyFlag) {
+                    c.setIndustry("人力资源服务");
+                }
+                c.setUpdatedAt(LocalDateTime.now());
+                updateById(c);
+            }
+        } else {
+            Company shell = new Company();
+            shell.setCompanyName(companyName);
+            shell.setSourcePlatform("manual");
+            shell.setIsAgency(agencyFlag);
+            if (agencyFlag) {
+                shell.setIndustry("人力资源服务");
+            }
+            shell.setCreatedAt(LocalDateTime.now());
+            shell.setUpdatedAt(LocalDateTime.now());
+            save(shell);
         }
 
-        queryWrapper.orderByDesc(Company::getUpdatedAt);
-
-        Page<Company> resultPage = page(companyPage, queryWrapper);
-        CompanyDisjointSet dsu = getOrBuildDsu();
-
-        List<CompanyVO> voList = resultPage.getRecords().stream().map(company -> {
-            CompanyVO vo = new CompanyVO();
-            BeanUtils.copyProperties(company, vo);
-            String canonicalName = dsu.find(company.getCompanyName());
-            if (canonicalName != null && !canonicalName.isEmpty()) {
-                vo.setCompanyName(canonicalName);
+        // 2. 级联同步职位
+        if (jobMapper != null) {
+            if (agencyFlag) {
+                jobMapper.update(null, new LambdaUpdateWrapper<Job>()
+                        .set(Job::getIsHeadhunter, true)
+                        .and(w -> w.eq(Job::getCompanyName, companyName)
+                                .or()
+                                .eq(Job::getCompanyFullName, companyName)));
+            } else {
+                List<Job> jobs = jobMapper.selectList(new QueryWrapper<Job>()
+                        .eq("companyName", companyName)
+                        .or()
+                        .eq("companyFullName", companyName));
+                List<String> revertJobIds = new ArrayList<>();
+                for (Job j : jobs) {
+                    if (!isSourceDataHeadhunter(j.getPlatform(), j.getRawData())) {
+                        revertJobIds.add(j.getId());
+                    }
+                }
+                if (!revertJobIds.isEmpty()) {
+                    jobMapper.update(null, new LambdaUpdateWrapper<Job>()
+                            .set(Job::getIsHeadhunter, false)
+                            .in(Job::getId, revertJobIds));
+                }
             }
-            return vo;
+        }
+        return true;
+    }
+
+    @Override
+    public Map<String, Object> getCompanies(int page, int pageSize, String query) {
+        return getCompanies(page, pageSize, query, "normal", "direct", "all", "all");
+    }
+
+    @Override
+    public Map<String, Object> getCompanies(int page, int pageSize, String query, String status, String agencyFilter, String platformFilter, String cityFilter) {
+        if (jobMapper == null || aiJobResultMapper == null) {
+            // 降级使用单表查询
+            Page<Company> companyPage = new Page<>(page, pageSize);
+            LambdaQueryWrapper<Company> queryWrapper = new LambdaQueryWrapper<>();
+            if (query != null && !query.trim().isEmpty()) {
+                String q = query.trim();
+                queryWrapper.and(w -> w.like(Company::getCompanyName, q).or().like(Company::getCompanyFullName, q));
+            }
+            queryWrapper.orderByDesc(Company::getUpdatedAt);
+            Page<Company> resultPage = page(companyPage, queryWrapper);
+            Map<String, Object> res = new HashMap<>();
+            res.put("data", resultPage.getRecords());
+            res.put("total", (int) resultPage.getTotal());
+            res.put("hasMore", (page * pageSize) < resultPage.getTotal());
+            return res;
+        }
+
+        // 1. 获取所有职位（根据 status 过滤：normal 则 isHidden=false 且 status='normal'）
+        QueryWrapper<Job> jobWrapper = new QueryWrapper<>();
+        jobWrapper.ne("status", "deleted");
+        if ("normal".equalsIgnoreCase(status) || status == null || status.isEmpty()) {
+            jobWrapper.eq("isHidden", false).eq("status", "normal");
+        }
+        List<Job> jobs = jobMapper.selectList(jobWrapper);
+
+        // 1.1 获取 AI 结果映射 (jobId -> AiJobResult)
+        List<AiJobResult> aiResults = aiJobResultMapper.selectList(null);
+        Map<String, AiJobResult> aiResultMap = aiResults.stream()
+                .filter(a -> a.getJobId() != null)
+                .collect(Collectors.toMap(AiJobResult::getJobId, a -> a, (k1, k2) -> k1));
+
+        // 1.2 获取黑名单集合
+        List<BlacklistedCompany> blacklisted = blacklistedCompanyMapper.selectList(null);
+        Set<String> blacklistedSet = blacklisted.stream()
+                .map(BlacklistedCompany::getCompanyName)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // 2. 获取所有 Company 记录并建立映射
+        List<Company> companiesData = list();
+        Map<String, CompanyNode> companyMap = new HashMap<>();
+
+        for (Company c : companiesData) {
+            String cleanFull = cleanCompanyName(c.getCompanyFullName());
+            String cleanName = cleanCompanyName(c.getCompanyName());
+            String key = !cleanFull.isEmpty() ? cleanFull : cleanName;
+            if (key.isEmpty() || "未知公司".equals(key)) continue;
+
+            CompanyNode node = companyMap.get(key);
+            if (node == null) {
+                node = new CompanyNode();
+                node.companyName = key;
+                node.companyFullName = !cleanFull.isEmpty() ? cleanFull : cleanName;
+                node.brandName = (!cleanName.isEmpty() && !cleanName.equals(cleanFull)) ? cleanName : "";
+                node.sourcePlatform = c.getSourcePlatform();
+                node.companyId = c.getCompanyId();
+                node.isAgency = Boolean.TRUE.equals(c.getIsAgency());
+                node.industry = c.getIndustry();
+                node.scale = c.getScale();
+                node.stage = c.getStage();
+                node.companyType = c.getCompanyType();
+                node.creditCode = c.getCreditCode();
+                node.logo = c.getLogo();
+                node.welfareList = parseJsonList(c.getWelfareList());
+                node.rawData = c.getRawData();
+                node.rawData2 = c.getRawData2();
+                node.rawData3 = c.getRawData3();
+                companyMap.put(key, node);
+            } else {
+                if (Boolean.TRUE.equals(c.getIsAgency())) node.isAgency = true;
+                if (node.creditCode == null && c.getCreditCode() != null) node.creditCode = c.getCreditCode();
+                if (node.industry == null && c.getIndustry() != null) node.industry = c.getIndustry();
+                if (node.scale == null && c.getScale() != null) node.scale = c.getScale();
+                if (node.stage == null && c.getStage() != null) node.stage = c.getStage();
+                if (node.companyType == null && c.getCompanyType() != null) node.companyType = c.getCompanyType();
+                if (node.logo == null && c.getLogo() != null) node.logo = c.getLogo();
+                if ((node.brandName == null || node.brandName.equals(key)) && !cleanName.isEmpty() && !cleanName.equals(key)) {
+                    node.brandName = cleanName;
+                }
+            }
+            if (!cleanName.isEmpty() && !cleanName.equals(key) && !companyMap.containsKey(cleanName)) {
+                companyMap.put(cleanName, node);
+            }
+        }
+
+        // 3. 聚合职位到公司节点
+        Map<String, CompanyNode> resultNodes = new LinkedHashMap<>();
+
+        for (Job job : jobs) {
+            String cleanFull = cleanCompanyName(job.getCompanyFullName());
+            String cleanBrand = cleanCompanyName(job.getCompanyName());
+            String nodeKey = !cleanFull.isEmpty() ? cleanFull : cleanBrand;
+            String platform = job.getPlatform();
+            if (nodeKey.isEmpty() || "未知公司".equals(nodeKey) || platform == null) continue;
+
+            CompanyNode node = resultNodes.get(nodeKey);
+            if (node == null) {
+                CompanyNode baseCompany = companyMap.get(nodeKey);
+                if (baseCompany == null && !cleanBrand.isEmpty()) {
+                    baseCompany = companyMap.get(cleanBrand);
+                }
+                node = new CompanyNode();
+                if (baseCompany != null) {
+                    node.companyName = nodeKey;
+                    node.companyFullName = !cleanFull.isEmpty() ? cleanFull : nodeKey;
+                    node.brandName = (!cleanBrand.isEmpty() && !cleanBrand.equals(nodeKey)) ? cleanBrand : (baseCompany.brandName != null ? baseCompany.brandName : "");
+                    node.sourcePlatform = baseCompany.sourcePlatform != null ? baseCompany.sourcePlatform : platform;
+                    node.companyId = baseCompany.companyId;
+                    node.isAgency = baseCompany.isAgency;
+                    node.industry = baseCompany.industry;
+                    node.scale = baseCompany.scale;
+                    node.stage = baseCompany.stage;
+                    node.companyType = baseCompany.companyType;
+                    node.creditCode = baseCompany.creditCode;
+                    node.logo = baseCompany.logo;
+                    node.welfareList = baseCompany.welfareList;
+                    node.rawData = baseCompany.rawData;
+                    node.rawData2 = baseCompany.rawData2;
+                    node.rawData3 = baseCompany.rawData3;
+                } else {
+                    node.companyName = nodeKey;
+                    node.companyFullName = !cleanFull.isEmpty() ? cleanFull : nodeKey;
+                    node.brandName = (!cleanBrand.isEmpty() && !cleanBrand.equals(nodeKey)) ? cleanBrand : "";
+                    node.sourcePlatform = platform;
+                    node.isAgency = false;
+                }
+                resultNodes.put(nodeKey, node);
+            }
+
+            // 统计城市
+            String jobCity = job.getCity() != null ? job.getCity() : (job.getLocation() != null ? job.getLocation().split("[\\s·-]")[0] : "");
+            if (jobCity != null && !jobCity.trim().isEmpty() && !"未知".equals(jobCity.trim())) {
+                String c = jobCity.trim();
+                node.cityMap.put(c, node.cityMap.getOrDefault(c, 0) + 1);
+            }
+
+            // 统计平台
+            node.platformSources.add(platform);
+            PlatformStat stat = node.platformStats.computeIfAbsent(platform, k -> new PlatformStat());
+            stat.total++;
+            if (Boolean.TRUE.equals(job.getIsHeadhunter())) {
+                stat.headhunter++;
+            } else {
+                stat.direct++;
+            }
+
+            // 猎头标记与客户画像
+            if (Boolean.TRUE.equals(job.getIsHeadhunter())) {
+                node.isAgency = true;
+                node.industry = "人力资源服务";
+                node.headhunterJobsCount++;
+                if (job.getClientCompanyName() != null && !job.getClientCompanyName().trim().isEmpty()) {
+                    node.clientCompanies.add(job.getClientCompanyName().trim());
+                }
+            } else {
+                node.directJobsCount++;
+            }
+
+            if (!node.isAgency) {
+                if (!cleanBrand.isEmpty() && !cleanBrand.equals(nodeKey) && (node.brandName == null || node.brandName.equals(nodeKey))) {
+                    node.brandName = cleanBrand;
+                }
+            } else {
+                node.brandName = "";
+                node.industry = "人力资源服务";
+            }
+
+            // 组装职位
+            Map<String, Object> jobItem = new LinkedHashMap<>();
+            jobItem.put("id", job.getId());
+            jobItem.put("jobId", job.getJobId());
+            jobItem.put("title", job.getTitle());
+            jobItem.put("companyName", job.getCompanyName());
+            jobItem.put("companyFullName", job.getCompanyFullName());
+            jobItem.put("salary", job.getSalary());
+            jobItem.put("location", job.getLocation());
+            jobItem.put("education", job.getEducation());
+            jobItem.put("experience", job.getExperience());
+            jobItem.put("platform", job.getPlatform());
+            jobItem.put("jobUrl", job.getJobUrl());
+            jobItem.put("jobDesc", job.getJobDesc());
+            jobItem.put("city", job.getCity());
+            jobItem.put("isHeadhunter", Boolean.TRUE.equals(job.getIsHeadhunter()));
+            jobItem.put("clientCompanyName", job.getClientCompanyName());
+            jobItem.put("applyStatus", job.getApplyStatus());
+            jobItem.put("tags", parseJsonList(job.getTags()));
+            jobItem.put("skills", parseJsonList(job.getSkills()));
+            jobItem.put("welfareList", parseJsonList(job.getWelfareList()));
+            jobItem.put("aiResult", aiResultMap.get(job.getJobId()));
+            boolean isBlacklisted = blacklistedSet.contains(job.getCompanyName())
+                    || (job.getCompanyFullName() != null && blacklistedSet.contains(job.getCompanyFullName()))
+                    || (job.getClientCompanyName() != null && blacklistedSet.contains(job.getClientCompanyName()))
+                    || blacklistedSet.contains(nodeKey);
+            jobItem.put("isBlacklisted", isBlacklisted);
+
+            node.jobs.add(jobItem);
+        }
+
+        // 4. 将 Map 转换为 List，计算 citiesWithCount, platformSources 等
+        List<Map<String, Object>> finalArray = new ArrayList<>();
+        for (CompanyNode node : resultNodes.values()) {
+            Map<String, Object> compObj = new LinkedHashMap<>();
+            compObj.put("companyName", node.companyName);
+            compObj.put("companyFullName", node.companyFullName);
+            compObj.put("brandName", node.brandName);
+            compObj.put("sourcePlatform", node.sourcePlatform);
+            compObj.put("companyId", node.companyId);
+            compObj.put("isAgency", node.isAgency);
+            compObj.put("industry", node.industry);
+            compObj.put("scale", node.scale);
+            compObj.put("stage", node.stage);
+            compObj.put("companyType", node.companyType);
+            compObj.put("creditCode", node.creditCode);
+            compObj.put("logo", node.logo);
+            compObj.put("welfareList", node.welfareList);
+            compObj.put("headhunterJobsCount", node.headhunterJobsCount);
+            compObj.put("directJobsCount", node.directJobsCount);
+            compObj.put("jobs", node.jobs);
+
+            List<Map<String, Object>> sortedCities = node.cityMap.entrySet().stream()
+                    .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
+                    .map(e -> {
+                        Map<String, Object> m = new HashMap<>();
+                        m.put("city", e.getKey());
+                        m.put("count", e.getValue());
+                        return m;
+                    }).collect(Collectors.toList());
+            compObj.put("citiesWithCount", sortedCities);
+            compObj.put("cities", sortedCities.stream().map(m -> (String) m.get("city")).collect(Collectors.toList()));
+            compObj.put("platformSources", new ArrayList<>(node.platformSources));
+            compObj.put("clientCompanies", new ArrayList<>(node.clientCompanies));
+            compObj.put("platformStats", node.platformStats);
+
+            finalArray.add(compObj);
+        }
+
+        // 按在招职位数量倒序排列
+        finalArray.sort((a, b) -> Integer.compare(((List<?>) b.get("jobs")).size(), ((List<?>) a.get("jobs")).size()));
+
+        // 5. 过滤筛选
+        String searchStr = query != null ? query.trim().toLowerCase() : "";
+        String agency = (agencyFilter != null && !agencyFilter.isEmpty()) ? agencyFilter : "direct";
+
+        List<Map<String, Object>> filtered = finalArray.stream().filter(c -> {
+            boolean isAgency = Boolean.TRUE.equals(c.get("isAgency"));
+            if ("direct".equalsIgnoreCase(agency) && isAgency) return false;
+            if ("agency".equalsIgnoreCase(agency) && !isAgency) return false;
+
+            if (platformFilter != null && !platformFilter.isEmpty() && !"all".equalsIgnoreCase(platformFilter)) {
+                List<String> ps = (List<String>) c.get("platformSources");
+                if (ps == null || ps.stream().noneMatch(p -> p.contains(platformFilter))) return false;
+            }
+
+            if (cityFilter != null && !cityFilter.isEmpty() && !"all".equalsIgnoreCase(cityFilter)) {
+                List<String> cts = (List<String>) c.get("cities");
+                if (cts == null || !cts.contains(cityFilter)) return false;
+            }
+
+            if (!searchStr.isEmpty()) {
+                String cName = (String) c.get("companyName");
+                String cFullName = (String) c.get("companyFullName");
+                String bName = (String) c.get("brandName");
+                List<String> cts = (List<String>) c.get("cities");
+                List<String> clis = (List<String>) c.get("clientCompanies");
+                boolean match = (cName != null && cName.toLowerCase().contains(searchStr))
+                        || (cFullName != null && cFullName.toLowerCase().contains(searchStr))
+                        || (bName != null && bName.toLowerCase().contains(searchStr))
+                        || (cts != null && cts.stream().anyMatch(ct -> ct.toLowerCase().contains(searchStr)))
+                        || (clis != null && clis.stream().anyMatch(cli -> cli.toLowerCase().contains(searchStr)));
+                if (!match) return false;
+            }
+            return true;
         }).collect(Collectors.toList());
 
+        int total = filtered.size();
+        int startIndex = Math.max(0, (page - 1) * pageSize);
+        int endIndex = Math.min(total, startIndex + pageSize);
+        List<Map<String, Object>> paginated = startIndex < total ? filtered.subList(startIndex, endIndex) : Collections.emptyList();
+
         Map<String, Object> res = new HashMap<>();
-        res.put("data", voList);
-        res.put("total", (int) resultPage.getTotal());
-        res.put("hasMore", (page * pageSize) < resultPage.getTotal());
+        res.put("data", paginated);
+        res.put("total", total);
+        res.put("hasMore", endIndex < total);
         return res;
+    }
+
+    private List<String> parseJsonList(String json) {
+        if (json == null || json.trim().isEmpty()) return Collections.emptyList();
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+    }
+
+    private static class CompanyNode {
+        String companyName;
+        String companyFullName;
+        String brandName;
+        String sourcePlatform;
+        String companyId;
+        boolean isAgency;
+        String industry;
+        String scale;
+        String stage;
+        String companyType;
+        String creditCode;
+        String logo;
+        List<String> welfareList = Collections.emptyList();
+        String rawData;
+        String rawData2;
+        String rawData3;
+        List<Map<String, Object>> jobs = new ArrayList<>();
+        Set<String> platformSources = new LinkedHashSet<>();
+        Map<String, PlatformStat> platformStats = new LinkedHashMap<>();
+        Set<String> clientCompanies = new LinkedHashSet<>();
+        Map<String, Integer> cityMap = new LinkedHashMap<>();
+        int headhunterJobsCount = 0;
+        int directJobsCount = 0;
+    }
+
+    public static class PlatformStat {
+        public int total = 0;
+        public int headhunter = 0;
+        public int direct = 0;
     }
 
     /**

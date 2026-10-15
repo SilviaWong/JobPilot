@@ -3,17 +3,27 @@ package com.jobpilot.jobpilotserver.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.jobpilot.jobpilotserver.common.exception.BusinessException;
+import com.jobpilot.jobpilotserver.common.result.ResultCode;
 import com.jobpilot.jobpilotserver.mapper.StandardQuestionMapper;
 import com.jobpilot.jobpilotserver.model.entity.StandardQuestion;
 import com.jobpilot.jobpilotserver.service.AiSettingsService;
 import com.jobpilot.jobpilotserver.service.QuestionService;
+import com.jobpilot.jobpilotserver.service.ResumeService;
 import com.jobpilot.jobpilotserver.strategy.llm.LlmClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 面试题库业务实现类
@@ -24,16 +34,31 @@ import java.util.Map;
 @Service
 public class QuestionServiceImpl extends ServiceImpl<StandardQuestionMapper, StandardQuestion> implements QuestionService {
 
+    private static final Logger log = LoggerFactory.getLogger(QuestionServiceImpl.class);
+
     private final StandardQuestionMapper questionMapper;
     private final AiSettingsService aiSettingsService;
+    private final ResumeService resumeService;
     private final LlmClient llmClient;
+    private final Executor aiTaskExecutor;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public QuestionServiceImpl(StandardQuestionMapper questionMapper,
+                               AiSettingsService aiSettingsService,
+                               ResumeService resumeService,
+                               LlmClient llmClient,
+                               @Qualifier("aiTaskExecutor") Executor aiTaskExecutor) {
+        this.questionMapper = questionMapper;
+        this.aiSettingsService = aiSettingsService;
+        this.resumeService = resumeService;
+        this.llmClient = llmClient;
+        this.aiTaskExecutor = aiTaskExecutor;
+    }
 
     public QuestionServiceImpl(StandardQuestionMapper questionMapper,
                                AiSettingsService aiSettingsService,
                                LlmClient llmClient) {
-        this.questionMapper = questionMapper;
-        this.aiSettingsService = aiSettingsService;
-        this.llmClient = llmClient;
+        this(questionMapper, aiSettingsService, null, llmClient, null);
     }
 
     /**
@@ -159,5 +184,103 @@ public class QuestionServiceImpl extends ServiceImpl<StandardQuestionMapper, Sta
         } catch (Exception e) {
             throw new RuntimeException("生成AI答案失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 批量为缺失 AI 解答的面试题生成标准参考答案
+     */
+    @Override
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> batchAiAnswer() {
+        // 1. 获取全局 AI 配置及当前激活的模型 Profile
+        Map<String, Object> settings = aiSettingsService.getSettings();
+        List<Map<String, Object>> profiles = (List<Map<String, Object>>) settings.get("profiles");
+        String activeProfileId = (String) settings.get("activeProfileId");
+        String resume = resumeService != null ? resumeService.getResumeText() : "";
+
+        if (resume == null || resume.trim().isEmpty()) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "请先在系统设置中完成个人简历设置");
+        }
+
+        String url = "", key = "", model = "";
+        if (profiles != null) {
+            for (Map<String, Object> p : profiles) {
+                if (activeProfileId != null && activeProfileId.equals(p.get("id"))) {
+                    url = (String) p.get("url");
+                    key = (String) p.get("key");
+                    model = (String) p.get("model");
+                    break;
+                }
+            }
+        }
+
+        if (url == null || url.isEmpty() || key == null || key.isEmpty() || model == null || model.isEmpty()) {
+            throw new BusinessException(ResultCode.AI_CONFIG_MISSING, "当前激活的 AI 模型配置不完整");
+        }
+
+        // 2. 查询所有目标题目（aiAnswer 为空或 null）
+        List<StandardQuestion> questions = questionMapper.selectList(new QueryWrapper<StandardQuestion>()
+                .isNull("aiAnswer")
+                .or()
+                .eq("aiAnswer", ""));
+
+        if (questions == null || questions.isEmpty()) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "未找到需要补充 AI 解答的题目");
+        }
+
+        final String finalUrl = url;
+        final String finalKey = key;
+        final String finalModel = model;
+        final String finalResume = resume;
+
+        String systemPrompt = "你现在是一位资深的面试官和技术专家。用户正在准备技术面试，请你基于提供的【面试题目】和【核心考点】，并结合用户的【个人简历】，生成一份高质量的面试答案解析。\n\n" +
+                "要求：\n" +
+                "1. 答案必须紧密围绕【核心考点】展开，不要偏题。\n" +
+                "2. 尽可能结合候选人【个人简历】中的项目经验或技术栈，提供具有个人特色的回答思路。如果简历中完全没有相关内容，则给出通用且专业的标准回答。\n" +
+                "3. 回答要条理清晰，结构化输出（可以使用 Markdown 的列表、加粗等格式）。\n" +
+                "4. 语气专业、自信，直接以求职者的口吻输出回答，不要废话，也不需要做自我介绍。";
+
+        AtomicInteger successCount = new AtomicInteger(0);
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+        for (StandardQuestion q : questions) {
+            Runnable task = () -> {
+                try {
+                    String userPrompt = String.format(
+                            "=== 面试题目 ===\n%s\n\n=== 核心考点 ===\n%s\n\n=== 个人简历 ===\n%s\n\n请开始你的回答：",
+                            q.getTitle(),
+                            q.getCorePoints() != null && !q.getCorePoints().isEmpty() ? q.getCorePoints() : "无特别提示，请基于题目给出全面解答",
+                            finalResume
+                    );
+                    String resultText = llmClient.callAI(systemPrompt, userPrompt, finalUrl, finalKey, finalModel);
+                    if (resultText != null && !resultText.trim().isEmpty()) {
+                        StandardQuestion updateItem = new StandardQuestion();
+                        updateItem.setId(q.getId());
+                        updateItem.setAiAnswer(resultText.trim());
+                        updateItem.setUpdatedAt(LocalDateTime.now());
+                        questionMapper.updateById(updateItem);
+                        successCount.incrementAndGet();
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to generate AI answer for question {}: {}", q.getId(), e.getMessage());
+                }
+            };
+
+            CompletableFuture<Void> future = aiTaskExecutor != null
+                    ? CompletableFuture.runAsync(task, aiTaskExecutor)
+                    : CompletableFuture.runAsync(task);
+            futures.add(future);
+        }
+
+        try {
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        } catch (Exception e) {
+            log.error("Batch AI answering completed with errors: {}", e.getMessage());
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("count", successCount.get());
+        return result;
     }
 }

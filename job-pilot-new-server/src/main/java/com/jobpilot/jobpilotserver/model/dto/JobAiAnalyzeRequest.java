@@ -5,11 +5,17 @@ package com.jobpilot.jobpilotserver.model.dto;
  */
 public class JobAiAnalyzeRequest {
     private String jobId;
+    private String resumeProfileId;
 
     public JobAiAnalyzeRequest() {}
 
     public JobAiAnalyzeRequest(String jobId) {
         this.jobId = jobId;
+    }
+
+    public JobAiAnalyzeRequest(String jobId, String resumeProfileId) {
+        this.jobId = jobId;
+        this.resumeProfileId = resumeProfileId;
     }
 
     public String getJobId() {
@@ -18,5 +24,13 @@ public class JobAiAnalyzeRequest {
 
     public void setJobId(String jobId) {
         this.jobId = jobId;
+    }
+
+    public String getResumeProfileId() {
+        return resumeProfileId;
+    }
+
+    public void setResumeProfileId(String resumeProfileId) {
+        this.resumeProfileId = resumeProfileId;
     }
 }

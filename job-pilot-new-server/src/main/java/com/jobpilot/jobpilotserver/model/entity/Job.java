@@ -76,10 +76,63 @@ public class Job {
     private Boolean isHidden;
     /** 自定义标签 */
     private String tags;
+    /** 首见时间 */
+    private LocalDateTime firstSeen;
+    /** 最后抓取时间 */
+    private LocalDateTime lastSeen;
+    /** 职位描述哈希 */
+    private String descHash;
+    /** HR 活跃状态描述 */
+    private String hrActiveStatus;
+    /** HR 活跃等级 (active, moderate, zombie, unknown) */
+    private String hrActiveLevel;
+    /** 投递/看板状态 (none, to-apply, applied, interview-1, interview-2, offer, rejected) */
+    private String applyStatus;
+    /** 发起投递时间 */
+    private LocalDateTime appliedAt;
+    /** 看板状态最后变更时间 */
+    private LocalDateTime statusUpdatedAt;
+    /** 最低薪资(K/月) */
+    private Double salaryMin;
+    /** 最高薪资(K/月) */
+    private Double salaryMax;
+    /** 平均薪资(K/月) */
+    private Double salaryAvg;
+    /** 年薪月数 */
+    private Integer salaryMonths;
+    /** 国家标准城市编码 */
+    private String cityCode;
     /** 创建时间 */
     private LocalDateTime createdAt;
     /** 更新时间 */
     private LocalDateTime updatedAt;
+
+    public LocalDateTime getFirstSeen() { return firstSeen; }
+    public void setFirstSeen(LocalDateTime firstSeen) { this.firstSeen = firstSeen; }
+    public LocalDateTime getLastSeen() { return lastSeen; }
+    public void setLastSeen(LocalDateTime lastSeen) { this.lastSeen = lastSeen; }
+    public String getDescHash() { return descHash; }
+    public void setDescHash(String descHash) { this.descHash = descHash; }
+    public String getHrActiveStatus() { return hrActiveStatus; }
+    public void setHrActiveStatus(String hrActiveStatus) { this.hrActiveStatus = hrActiveStatus; }
+    public String getHrActiveLevel() { return hrActiveLevel; }
+    public void setHrActiveLevel(String hrActiveLevel) { this.hrActiveLevel = hrActiveLevel; }
+    public String getApplyStatus() { return applyStatus; }
+    public void setApplyStatus(String applyStatus) { this.applyStatus = applyStatus; }
+    public LocalDateTime getAppliedAt() { return appliedAt; }
+    public void setAppliedAt(LocalDateTime appliedAt) { this.appliedAt = appliedAt; }
+    public LocalDateTime getStatusUpdatedAt() { return statusUpdatedAt; }
+    public void setStatusUpdatedAt(LocalDateTime statusUpdatedAt) { this.statusUpdatedAt = statusUpdatedAt; }
+    public Double getSalaryMin() { return salaryMin; }
+    public void setSalaryMin(Double salaryMin) { this.salaryMin = salaryMin; }
+    public Double getSalaryMax() { return salaryMax; }
+    public void setSalaryMax(Double salaryMax) { this.salaryMax = salaryMax; }
+    public Double getSalaryAvg() { return salaryAvg; }
+    public void setSalaryAvg(Double salaryAvg) { this.salaryAvg = salaryAvg; }
+    public Integer getSalaryMonths() { return salaryMonths; }
+    public void setSalaryMonths(Integer salaryMonths) { this.salaryMonths = salaryMonths; }
+    public String getCityCode() { return cityCode; }
+    public void setCityCode(String cityCode) { this.cityCode = cityCode; }
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }

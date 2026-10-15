@@ -30,10 +30,17 @@ public class JobController {
             @RequestParam(defaultValue = "all") String platform,
             @RequestParam(defaultValue = "all") String education,
             @RequestParam(defaultValue = "") String keyword,
-            @RequestParam(defaultValue = "all") String aiDiagnosisFilter) {
+            @RequestParam(defaultValue = "all") String aiDiagnosisFilter,
+            @RequestParam(required = false, defaultValue = "all") String headhunterFilter,
+            @RequestParam(required = false, defaultValue = "all") String city,
+            @RequestParam(required = false, defaultValue = "all") String salaryFilter,
+            @RequestParam(required = false, defaultValue = "all") String lifecycleFilter,
+            @RequestParam(required = false, defaultValue = "all") String hrActiveFilter,
+            @RequestParam(required = false, defaultValue = "updatedAt") String sortBy) {
 
         Map<String, Object> res = jobService.getJobs(page, pageSize, status, filterFavoritesOnly,
-                filterShowHidden, filterShowBlacklisted, platform, education, keyword, aiDiagnosisFilter);
+                filterShowHidden, filterShowBlacklisted, platform, education, keyword, aiDiagnosisFilter,
+                headhunterFilter, city, salaryFilter, lifecycleFilter, hrActiveFilter, sortBy);
 
         List<Object> data = (List<Object>) res.get("data");
         Long total = (Long) res.get("total");
@@ -45,7 +52,8 @@ public class JobController {
     @PutMapping("/{id}/status")
     public Result<Job> updateStatus(@PathVariable String id, @RequestBody JobStatusUpdateRequest request) {
         String status = request != null ? request.getStatus() : null;
-        Job updated = jobService.updateJobStatus(id, status);
+        String note = request != null ? request.getNote() : null;
+        Job updated = jobService.updateJobStatus(id, status, note);
         return Result.success(updated);
     }
 
@@ -103,6 +111,14 @@ public class JobController {
     public Result<Object> predictQuestions(@RequestBody JobAiAnalyzeRequest request) {
         String jobId = request != null ? request.getJobId() : null;
         Map<String, Object> res = jobService.predictQuestions(jobId);
+        return Result.success(res.get("data"));
+    }
+
+    @PostMapping("/gap-analysis")
+    public Result<Object> gapAnalysis(@RequestBody JobAiAnalyzeRequest request) {
+        String jobId = request != null ? request.getJobId() : null;
+        String resumeProfileId = request != null ? request.getResumeProfileId() : null;
+        Map<String, Object> res = jobService.gapAnalysis(jobId, resumeProfileId);
         return Result.success(res.get("data"));
     }
 }

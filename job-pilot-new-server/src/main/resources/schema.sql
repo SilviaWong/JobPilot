@@ -23,8 +23,24 @@ CREATE TABLE IF NOT EXISTS "Job" (
     "updateDate" TEXT,
     "isHeadhunter" BOOLEAN NOT NULL DEFAULT false,
     "clientCompanyName" TEXT,
+    "clientIndustry" TEXT,
+    "clientScale" TEXT,
+    "clientStage" TEXT,
     "platform" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'normal',
+    "applyStatus" TEXT DEFAULT 'none',
+    "appliedAt" DATETIME,
+    "statusUpdatedAt" DATETIME,
+    "hrActiveStatus" TEXT,
+    "hrActiveLevel" TEXT,
+    "firstSeen" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "lastSeen" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "descHash" TEXT,
+    "salaryMin" REAL,
+    "salaryMax" REAL,
+    "salaryAvg" REAL,
+    "salaryMonths" INTEGER DEFAULT 12,
+    "cityCode" TEXT,
     "rawData" TEXT NOT NULL,
     "rawData2" TEXT,
     "dataSource" TEXT NOT NULL DEFAULT 'unknown',
@@ -57,10 +73,15 @@ CREATE TABLE IF NOT EXISTS "Company" (
     "industry" TEXT,
     "scale" TEXT,
     "stage" TEXT,
+    "companyType" TEXT,
+    "creditCode" TEXT,
+    "logo" TEXT,
     "companyDesc" TEXT,
     "welfare" TEXT,
+    "welfareList" TEXT,
     "rawData" TEXT,
     "rawData2" TEXT,
+    "rawData3" TEXT,
     "isAgency" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL
@@ -84,7 +105,9 @@ CREATE TABLE IF NOT EXISTS "Interview" (
 CREATE TABLE IF NOT EXISTS "BlacklistedCompany" (
     "companyName" TEXT NOT NULL PRIMARY KEY,
     "reason" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "source" TEXT DEFAULT 'manual',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- CreateTable: CompanyAlias (企业并查集合并别名表)
@@ -167,7 +190,33 @@ CREATE TABLE IF NOT EXISTS "AiSkill" (
     "updatedAt" DATETIME NOT NULL
 );
 
+-- CreateTable: resume_profiles (多版本简历画像表)
+CREATE TABLE IF NOT EXISTS "resume_profiles" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "title" TEXT NOT NULL,
+    "targetRole" TEXT,
+    "tags" TEXT,
+    "content" TEXT NOT NULL,
+    "isDefault" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable: job_status_logs (投递进度流转日志表)
+CREATE TABLE IF NOT EXISTS "job_status_logs" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "jobRecordId" TEXT NOT NULL,
+    "fromStatus" TEXT NOT NULL,
+    "toStatus" TEXT NOT NULL,
+    "note" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "job_status_logs_jobRecordId_fkey" FOREIGN KEY ("jobRecordId") REFERENCES "Job" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX IF NOT EXISTS "Job_jobId_platform_key" ON "Job"("jobId", "platform");
 CREATE UNIQUE INDEX IF NOT EXISTS "Company_companyName_sourcePlatform_companyId_key" ON "Company"("companyName", "sourcePlatform", "companyId");
 CREATE UNIQUE INDEX IF NOT EXISTS "JobDetail_jobId_platform_key" ON "JobDetail"("jobId", "platform");
+CREATE INDEX IF NOT EXISTS "resume_profiles_isDefault_idx" ON "resume_profiles"("isDefault");
+CREATE INDEX IF NOT EXISTS "job_status_logs_jobRecordId_idx" ON "job_status_logs"("jobRecordId");
+CREATE INDEX IF NOT EXISTS "job_status_logs_toStatus_createdAt_idx" ON "job_status_logs"("toStatus", "createdAt");

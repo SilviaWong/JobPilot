@@ -11,4 +11,5 @@ public interface QuestionService extends IService<StandardQuestion> {
     StandardQuestion updateQuestion(String id, StandardQuestion question);
     boolean deleteQuestion(String id);
     String generateAiAnswer(String title, String corePoints);
+    Map<String, Object> batchAiAnswer();
 }

@@ -59,4 +59,10 @@ public class QuestionController {
         String answer = questionService.generateAiAnswer(title, corePoints);
         return Result.success(answer);
     }
+
+    @PostMapping("/batch-ai-answer")
+    public Result<Map<String, Object>> batchAiAnswer() {
+        Map<String, Object> res = questionService.batchAiAnswer();
+        return Result.success(res);
+    }
 }

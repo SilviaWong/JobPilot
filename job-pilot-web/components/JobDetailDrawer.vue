@@ -1,15 +1,31 @@
 <template>
   <el-drawer
     v-model="visible"
-    :title="job?.title || '职位详情'"
     size="75%"
     destroy-on-close
     class="detail-drawer"
+    :with-header="false"
   >
     <template #default>
       <div v-if="job" class="drawer-split-layout">
         <!-- 左侧：岗位详情 -->
         <div class="drawer-left">
+          <div class="drawer-left-topbar">
+            <div class="drawer-breadcrumb">
+              <el-tag size="small" type="primary" effect="plain" class="platform-mini-tag">
+                <el-icon><Globe /></el-icon>&nbsp;{{ job.platform }}
+              </el-tag>
+              <span class="breadcrumb-sep">/</span>
+              <span class="breadcrumb-title" :title="job.salary ? `${job.title} ${job.salary}` : job.title">
+                <span class="breadcrumb-job-name">{{ job.title || '职位详情' }}</span>
+                <span v-if="job.salary" class="breadcrumb-salary">{{ job.salary }}</span>
+              </span>
+              <el-tag v-if="isJobExpired" size="small" type="danger" effect="light" class="status-mini-tag">
+                已失效
+              </el-tag>
+            </div>
+          </div>
+
           <div class="drawer-left-content">
             <div class="detail-header">
               <h1 class="detail-title">{{ job.title }}</h1>
@@ -17,7 +33,14 @@
             </div>
           
             <div class="detail-sub-header">
-              <span class="company-text"><el-icon><Building /></el-icon> {{ job.normalizedData?.clientCompanyName || job.normalizedData?.brandName || '-' }}</span>
+              <span class="company-text"><el-icon><Building /></el-icon> {{ job.companyFullName || job.companyName || '-' }}</span>
+              <template v-if="(job.isHeadhunter || job.normalizedData?.isHeadhunter) && (job.clientCompanyName || job.normalizedData?.clientCompanyName)">
+                <span class="divider">|</span>
+                <span class="client-company-sub">
+                  <span class="client-label">代招客户：</span>
+                  <span class="client-val">{{ job.clientCompanyName || job.normalizedData?.clientCompanyName }}</span>
+                </span>
+              </template>
               <span class="divider">|</span>
               <span class="location-text"><el-icon><MapPin /></el-icon> {{ [job.normalizedData?.city, job.normalizedData?.area, job.normalizedData?.businessDistrict].filter(Boolean).join('·') }}</span>
             </div>
@@ -30,19 +53,79 @@
               <el-tag effect="light" type="info" size="large" class="badge-tag"><el-icon><Globe /></el-icon> {{ job.platform }}</el-tag>
               <el-tag effect="light" type="info" size="large" class="badge-tag"><el-icon><Briefcase /></el-icon> {{ job.normalizedData?.experience || '经验不限' }}</el-tag>
               <el-tag effect="light" type="info" size="large" class="badge-tag"><el-icon><GraduationCap /></el-icon> {{ job.normalizedData?.degree || '学历不限' }}</el-tag>
+              <el-tag v-if="job.isHeadhunter || job.normalizedData?.isHeadhunter" effect="light" size="large" class="badge-tag" style="background-color: #fce4ec; color: #c2185b; border: 1px solid #f8bbd0;">
+                <el-icon><UserCheck /></el-icon>&nbsp;猎头/代招岗位
+                <span v-if="job.clientCompanyName || job.normalizedData?.clientCompanyName" style="font-weight: 500; margin-left: 4px;">
+                  （客户：{{ job.clientCompanyName || job.normalizedData?.clientCompanyName }}）
+                </span>
+              </el-tag>
             </div>
 
             <div class="section-title"><el-icon><BarChart /></el-icon> 岗位概览</div>
             <div class="stats-grid">
-              <div class="stat-box"><span class="stat-label">所属行业</span><span class="stat-value">{{ job.normalizedData?.companyIndustry || '-' }}</span></div>
-              <div class="stat-box"><span class="stat-label">公司阶段</span><span class="stat-value">{{ job.normalizedData?.companyStage || '-' }}</span></div>
-              <div class="stat-box"><span class="stat-label">人员规模</span><span class="stat-value">{{ job.normalizedData?.companyScale || '-' }}</span></div>
+              <div class="stat-box" v-if="(job.isHeadhunter || job.normalizedData?.isHeadhunter) && (job.clientCompanyName || job.normalizedData?.clientCompanyName)">
+                <span class="stat-label">代招客户公司</span>
+                <span class="stat-value client-company-highlight" :title="job.clientCompanyName || job.normalizedData?.clientCompanyName">
+                  {{ job.clientCompanyName || job.normalizedData?.clientCompanyName }}
+                </span>
+              </div>
+              <div class="stat-box" v-if="(job.isHeadhunter || job.normalizedData?.isHeadhunter) && (job.clientIndustry || job.normalizedData?.clientIndustry)">
+                <span class="stat-label">目标客户行业</span>
+                <span class="stat-value" style="color: #1976d2; font-weight: 600;">{{ job.clientIndustry || job.normalizedData?.clientIndustry }}</span>
+              </div>
+              <div class="stat-box" v-if="(job.isHeadhunter || job.normalizedData?.isHeadhunter) && (job.clientScale || job.normalizedData?.clientScale)">
+                <span class="stat-label">目标客户规模</span>
+                <span class="stat-value" style="color: #2e7d32; font-weight: 600;">{{ job.clientScale || job.normalizedData?.clientScale }}</span>
+              </div>
+              <div class="stat-box" v-if="(job.isHeadhunter || job.normalizedData?.isHeadhunter) && (job.clientStage || job.normalizedData?.clientStage)">
+                <span class="stat-label">目标客户阶段</span>
+                <span class="stat-value" style="color: #ed6c02; font-weight: 600;">{{ job.clientStage || job.normalizedData?.clientStage }}</span>
+              </div>
+              <div class="stat-box"><span class="stat-label">{{ (job.isHeadhunter || job.normalizedData?.isHeadhunter) ? '机构行业' : '所属行业' }}</span><span class="stat-value">{{ (job.isHeadhunter || job.normalizedData?.isHeadhunter) ? '人力资源服务' : (job.normalizedData?.companyIndustry || '-') }}</span></div>
+              <div class="stat-box" v-if="!(job.isHeadhunter || job.normalizedData?.isHeadhunter)"><span class="stat-label">公司阶段</span><span class="stat-value">{{ job.normalizedData?.companyStage || '-' }}</span></div>
+              <div class="stat-box" v-if="!(job.isHeadhunter || job.normalizedData?.isHeadhunter)"><span class="stat-label">人员规模</span><span class="stat-value">{{ job.normalizedData?.companyScale || '-' }}</span></div>
               <div class="stat-box"><span class="stat-label">招聘人员</span><span class="stat-value">{{ job.normalizedData?.hrName || '-' }}</span></div>
               <div class="stat-box"><span class="stat-label">招聘职位</span><span class="stat-value">{{ job.normalizedData?.hrPosition || '-' }}</span></div>
-              <div class="stat-box"><span class="stat-label">所属公司</span><span class="stat-value">{{ job.normalizedData?.hrCompanyName || '-' }}</span></div>
-              <div class="stat-box"><span class="stat-label">发布日期</span><span class="stat-value">{{ job.normalizedData?.publishDate || '-' }}</span></div>
-              <div class="stat-box"><span class="stat-label">更新日期</span><span class="stat-value">{{ job.normalizedData?.updateDate || '-' }}</span></div>
-              <div class="stat-box"><span class="stat-label">采集日期</span><span class="stat-value">{{ job.normalizedData?.spiderDate || '-' }}</span></div>
+              <div class="stat-box" v-if="job.normalizedData?.hrCompanyName || job.companyFullName || job.companyName"><span class="stat-label">{{ (job.isHeadhunter || job.normalizedData?.isHeadhunter) ? '猎头机构' : '所属公司' }}</span><span class="stat-value" :title="job.normalizedData?.hrCompanyName || job.companyFullName || job.companyName">{{ job.normalizedData?.hrCompanyName || job.companyFullName || job.companyName }}</span></div>
+            </div>
+
+            <!-- 时效与生命周期画像 -->
+            <div class="section-title" v-if="jobDiagnosis"><el-icon><Clock /></el-icon> 时效与生命周期画像</div>
+            <div class="lifecycle-panel" v-if="jobDiagnosis">
+              <div class="lifecycle-badge-row">
+                <div 
+                  class="lifecycle-status-pill"
+                  :style="{ 
+                    color: jobDiagnosis.badgeColor, 
+                    backgroundColor: jobDiagnosis.badgeBg, 
+                    borderColor: jobDiagnosis.badgeColor + '55' 
+                  }"
+                >
+                  <span class="pill-dot" :style="{ backgroundColor: jobDiagnosis.badgeColor }"></span>
+                  <span class="pill-title">{{ jobDiagnosis.badgeText }}</span>
+                  <span class="pill-days">· 在招 {{ jobDiagnosis.ageDays }} 天</span>
+                </div>
+                <div class="lifecycle-tip-box">
+                  💡 {{ jobDiagnosis.advice }}
+                </div>
+              </div>
+
+              <!-- 时间轴脉络 -->
+              <div class="timeline-stepper" v-if="jobTimeline.length > 0">
+                <div v-for="(t, idx) in jobTimeline" :key="idx" class="timeline-step">
+                  <div class="step-icon-wrap" :class="t.tagType">
+                    <span class="step-num">{{ idx + 1 }}</span>
+                  </div>
+                  <div class="step-info">
+                    <div class="step-top">
+                      <span class="step-name">{{ t.title }}</span>
+                      <span class="step-time">{{ t.date }}</span>
+                      <span class="step-ago">({{ t.relative }})</span>
+                    </div>
+                    <div class="step-sub">{{ t.desc }}</div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <template v-if="job.normalizedData?.welfareList?.length">
@@ -53,7 +136,7 @@
             </template>
 
             <div class="section-title"><el-icon><FileText /></el-icon> 岗位职责与要求</div>
-            <div class="job-desc" style="white-space: pre-wrap;">{{ formatDesc(job.normalizedData?.jobDesc) }}</div>
+            <div class="job-desc" style="white-space: pre-wrap;">{{ formatDesc(job.normalizedData?.jobDesc || job.jobDesc) }}</div>
           
             <template v-if="job.normalizedData?.skills?.length">
               <div class="section-title"><el-icon><Tags /></el-icon> 技能标签</div>
@@ -67,87 +150,154 @@
           <div class="drawer-left-footer">
             <el-button v-if="getJobUrl(job)" type="primary" tag="a" :href="getJobUrl(job)" target="_blank" rel="noopener"><el-icon><ExternalLink /></el-icon>&nbsp;查看原网页</el-button>
             <el-button type="danger" plain @click="markAsExpired(job)" style="margin-left: 12px;" :loading="marking"><el-icon><Ban /></el-icon>&nbsp;标记失效</el-button>
+            <el-button type="danger" :plain="!job.isBlacklisted" @click="handleToggleBlacklist(job)" style="margin-left: 12px;"><el-icon><ShieldBan /></el-icon>&nbsp;{{ job.isBlacklisted ? '已拉黑企业' : '拉黑该企业' }}</el-button>
           </div>
           
         </div>
 
-        <!-- 右侧：AI 分析 -->
+        <!-- 右侧：AI 分析与面试跟进 -->
         <div class="drawer-right">
-          <div class="ai-panel">
-            <template v-if="job.aiResult">
-              <div class="ai-score-card-drawer">
-                <el-progress type="dashboard" :percentage="job.aiResult.score || 0" :color="getScoreColor(job.aiResult.score)" :width="100">
-                  <template #default="{ percentage }">
-                    <span class="ai-score-big">{{ percentage }}分</span>
-                  </template>
-                </el-progress>
-                <div class="ai-score-text">
-                  <h3>AI 匹配度评分 <el-tag :type="getScoreColor(job.aiResult.score, true)" size="small" effect="dark" style="margin-left: 5px;">{{ job.aiResult.matchLevel || '-' }}</el-tag></h3>
-                  <span class="ai-time">最新评分</span>
+          <div class="drawer-right-topbar">
+            <div class="drawer-right-tabs">
+              <button 
+                class="right-tab-btn" 
+                :class="{ active: rightTab === 'ai' }" 
+                @click="rightTab = 'ai'"
+              >
+                <el-icon class="ai-topbar-icon"><Sparkles /></el-icon>
+                <span>AI 深度评估</span>
+              </button>
+              <button 
+                class="right-tab-btn" 
+                :class="{ active: rightTab === 'interview' }" 
+                @click="rightTab = 'interview'"
+              >
+                <el-icon class="interview-topbar-icon"><Calendar /></el-icon>
+                <span>面试跟进与复盘</span>
+              </button>
+            </div>
+            <button class="drawer-close-btn" @click="visible = false" title="关闭 (Esc)">
+              <el-icon :size="16"><X /></el-icon>
+            </button>
+          </div>
+
+          <div class="drawer-right-body">
+            <div v-show="rightTab === 'ai'" class="ai-panel">
+              <!-- 多版本简历画像选择条 -->
+              <div class="resume-selector-bar">
+                <div class="selector-left">
+                  <span class="selector-label">🎯 诊断画像：</span>
+                  <el-select
+                    v-model="selectedResumeProfileId"
+                    size="small"
+                    placeholder="选择简历版本"
+                    style="width: 220px;"
+                  >
+                    <el-option
+                      v-for="p in resumeProfiles"
+                      :key="p.id"
+                      :label="p.isDefault ? `${p.title} (主简历)` : p.title"
+                      :value="p.id"
+                    />
+                  </el-select>
                 </div>
-              </div>
-
-              <div class="ai-section" style="margin-bottom: 20px;">
-                <h4><el-icon><Lightbulb /></el-icon> 详细分析</h4>
-                <div class="ai-analysis-content" v-html="formatAiAnalysis(job.aiResult.resultText)"></div>
-              </div>
-            </template>
-            
-            <div v-else class="ai-empty" style="margin-bottom: 20px; background: white; border-radius: 12px; border: 1px solid #e2e8f0; padding: 20px;">
-              <el-empty description="暂无综合匹配度分析，可点击下方按钮独立生成预测" :image-size="80" />
-            </div>
-
-            <div class="ai-section generator-section" style="margin-bottom: 20px;">
-              <h4><el-icon><Target /></el-icon> 🎯 面试题目预测</h4>
-              <div v-if="job.aiResult && job.aiResult.predictedQuestions" class="ai-analysis-content" v-html="formatAiAnalysis(job.aiResult.predictedQuestions)"></div>
-              <template v-else>
-                <p class="generator-desc">结合岗位 JD 和您的简历，预测可能被问到的高频面试题。</p>
-                <el-button type="warning" plain class="generate-btn" :loading="predicting" @click="generatePredictions"><el-icon><Sparkles /></el-icon>&nbsp;一键生成面试预测</el-button>
-              </template>
-            </div>
-
-            <div class="ai-section generator-section" style="margin-bottom: 20px;">
-              <h4><el-icon><Sparkles /></el-icon> AI 自我介绍生成</h4>
-              <div v-if="job.aiResult && job.aiResult.intro">
-                <div class="ai-analysis-content" v-html="formatAiAnalysis(job.aiResult.intro)"></div>
-                <div style="margin-top: 15px; display: flex; gap: 10px;">
-                  <el-button size="small" @click="copyIntro"><el-icon><Copy /></el-icon>&nbsp;复制话术</el-button>
-                  <el-button size="small" type="primary" plain :loading="generatingGreeting" @click="generateGreeting"><el-icon><RefreshCw /></el-icon>&nbsp;重新生成</el-button>
-                </div>
-              </div>
-              <template v-else>
-                <p class="generator-desc">让 AI 为您生成一份专业且有针对性的打招呼语，提高回复率。</p>
-                <el-button type="primary" plain class="generate-btn" :loading="generatingGreeting" @click="generateGreeting"><el-icon><Rocket /></el-icon>&nbsp;一键生成自我介绍</el-button>
-              </template>
-            </div>
-
-            <!-- 统一 AI 技能箱 这个功能先屏蔽掉：目前功能还未完善，效果不好-->
-            <!-- <div class="ai-section generator-section">
-              <h4><el-icon><Sparkles /></el-icon> ✨ AI 技能箱</h4>
-              <p class="generator-desc">基于统一大模型配置和您的简历，一键调用求职 Agent 技能。</p>
-              
-              <div class="skills-grid" style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
-                <el-button 
-                  v-for="skill in availableSkills" 
-                  :key="skill.id"
-                  type="primary" 
-                  plain 
-                  :loading="runningSkill === skill.id"
-                  @click="executeSkill(skill)"
+                <el-button
+                  size="small"
+                  type="primary"
+                  :loading="analyzing"
+                  @click="runFullAnalysis"
                 >
-                  <el-icon><Sparkles /></el-icon>&nbsp;{{ skill.name }}
+                  重新全面诊断
                 </el-button>
-              </div> -->
-
-              <!-- 技能结果展示区 -->
-              <!-- <div v-if="activeSkillResult" class="skill-result-box" style="margin-top: 15px; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
-                <h5 style="margin: 0 0 10px 0; display: flex; justify-content: space-between; align-items: center;">
-                  <span>执行结果：{{ activeSkillName }}</span>
-                  <el-button size="small" @click="copySkillResult"><el-icon><Copy /></el-icon>&nbsp;复制内容</el-button>
-                </h5>
-                <div class="ai-analysis-content" v-html="formatAiAnalysis(activeSkillResult)"></div>
               </div>
-            </div> -->
+
+              <!-- JD 深度技能差距分析卡片 -->
+              <JobGapAnalysisSection
+                :gap-data="gapResult"
+                :loading="gapAnalyzing"
+                @analyze="runGapAnalysis"
+              />
+
+              <template v-if="job.aiResult">
+                <div class="ai-score-card-drawer">
+                  <el-progress type="dashboard" :percentage="job.aiResult.score || 0" :color="getScoreColor(job.aiResult.score)" :width="100">
+                    <template #default="{ percentage }">
+                      <span class="ai-score-big">{{ percentage }}分</span>
+                    </template>
+                  </el-progress>
+                  <div class="ai-score-text">
+                    <h3>AI 匹配度评分 <el-tag :type="getScoreColor(job.aiResult.score, true)" size="small" effect="dark" style="margin-left: 5px;">{{ job.aiResult.matchLevel || '-' }}</el-tag></h3>
+                    <span class="ai-time">最新评分</span>
+                  </div>
+                </div>
+
+                <div class="ai-section" style="margin-bottom: 20px;">
+                  <h4><el-icon><Lightbulb /></el-icon> 详细分析</h4>
+                  <div class="ai-analysis-content" v-html="formatAiAnalysis(job.aiResult.resultText)"></div>
+                </div>
+              </template>
+              
+              <div v-else class="ai-empty" style="margin-bottom: 20px; background: white; border-radius: 12px; border: 1px solid #e2e8f0; padding: 20px;">
+                <el-empty description="暂无综合匹配度分析，可点击下方按钮独立生成预测" :image-size="80" />
+              </div>
+
+              <div class="ai-section generator-section" style="margin-bottom: 20px;">
+                <h4><el-icon><Target /></el-icon> 🎯 面试题目预测</h4>
+                <div v-if="job.aiResult && job.aiResult.predictedQuestions" class="ai-analysis-content" v-html="formatAiAnalysis(job.aiResult.predictedQuestions)"></div>
+                <template v-else>
+                  <p class="generator-desc">结合岗位 JD 和您的简历，预测可能被问到的高频面试题。</p>
+                  <el-button type="warning" plain class="generate-btn" :loading="predicting" @click="generatePredictions"><el-icon><Sparkles /></el-icon>&nbsp;一键生成面试预测</el-button>
+                </template>
+              </div>
+
+              <div class="ai-section generator-section" style="margin-bottom: 20px;">
+                <h4><el-icon><Sparkles /></el-icon> 🤖 AI 定制打招呼语</h4>
+                <div v-if="job.aiResult && job.aiResult.intro">
+                  <div class="ai-analysis-content" v-html="formatAiAnalysis(job.aiResult.intro)"></div>
+                  <div style="margin-top: 15px; display: flex; gap: 10px;">
+                    <el-button size="small" @click="copyIntro"><el-icon><Copy /></el-icon>&nbsp;复制打招呼语</el-button>
+                    <el-button size="small" type="primary" plain :loading="generatingGreeting" @click="generateGreeting"><el-icon><RefreshCw /></el-icon>&nbsp;重新生成</el-button>
+                  </div>
+                </div>
+                <template v-else>
+                  <p class="generator-desc">基于您的个人简历画像与当前岗位 JD，一键定制专属、高回复率的求职打招呼语。</p>
+                  <el-button type="primary" plain class="generate-btn" :loading="generatingGreeting" @click="generateGreeting"><el-icon><Rocket /></el-icon>&nbsp;🤖 一键生成定制打招呼语</el-button>
+                </template>
+              </div>
+
+              <!-- 统一 AI 技能箱 这个功能先屏蔽掉：目前功能还未完善，效果不好-->
+              <!-- <div class="ai-section generator-section">
+                <h4><el-icon><Sparkles /></el-icon> ✨ AI 技能箱</h4>
+                <p class="generator-desc">基于统一大模型配置和您的简历，一键调用求职 Agent 技能。</p>
+                
+                <div class="skills-grid" style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                  <el-button 
+                    v-for="skill in availableSkills" 
+                    :key="skill.id"
+                    type="primary" 
+                    plain 
+                    :loading="runningSkill === skill.id"
+                    @click="executeSkill(skill)"
+                  >
+                    <el-icon><Sparkles /></el-icon>&nbsp;{{ skill.name }}
+                  </el-button>
+                </div> -->
+
+                <!-- 技能结果展示区 -->
+                <!-- <div v-if="activeSkillResult" class="skill-result-box" style="margin-top: 15px; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                  <h5 style="margin: 0 0 10px 0; display: flex; justify-content: space-between; align-items: center;">
+                    <span>执行结果：{{ activeSkillName }}</span>
+                    <el-button size="small" @click="copySkillResult"><el-icon><Copy /></el-icon>&nbsp;复制内容</el-button>
+                  </h5>
+                  <div class="ai-analysis-content" v-html="formatAiAnalysis(activeSkillResult)"></div>
+                </div>
+              </div> -->
+            </div>
+
+            <!-- 面试追踪与复盘 Tab -->
+            <div v-if="rightTab === 'interview'" class="interview-panel-wrapper">
+              <JobInterviewSection :job="job" @interview-updated="onInterviewUpdated" />
+            </div>
           </div>
         </div>
       </div>
@@ -156,18 +306,115 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { JobStatus } from '~/utils/enums'
-import { Building, MapPin, Map, Briefcase, GraduationCap, Globe, BarChart, Gift, FileText, Lightbulb, Sparkles, Rocket, ExternalLink, Tags, Ban, Target, Copy, RefreshCw } from 'lucide-vue-next'
+import { Building, MapPin, Map, Briefcase, GraduationCap, Globe, BarChart, Gift, FileText, Lightbulb, Sparkles, Rocket, ExternalLink, Tags, Ban, Target, Copy, RefreshCw, ShieldBan, UserCheck, X, Clock, Calendar, Compass } from 'lucide-vue-next'
+import { getJobTimeDiagnosis, getJobTimeline } from '~/utils/jobTimeUtils'
+import JobGapAnalysisSection from '~/components/JobGapAnalysisSection.vue'
 
 const emit = defineEmits(['status-changed'])
 
 const visible = ref(false)
 const job = ref(null)
+const rightTab = ref('ai')
 const marking = ref(false)
 const predicting = ref(false)
 const generatingGreeting = ref(false)
+const analyzing = ref(false)
+
+// 多版本简历画像与 JD 差距分析状态
+const resumeProfiles = ref([])
+const selectedResumeProfileId = ref('')
+const gapResult = ref(null)
+const gapAnalyzing = ref(false)
+
+const fetchResumeProfiles = async () => {
+  try {
+    const res = await $fetch('/api/resumes')
+    if (res?.success) {
+      resumeProfiles.value = res.data || []
+      if (!selectedResumeProfileId.value && resumeProfiles.value.length > 0) {
+        const defaultOne = resumeProfiles.value.find(p => p.isDefault) || resumeProfiles.value[0]
+        selectedResumeProfileId.value = defaultOne.id
+      }
+    }
+  } catch (err) {
+    console.error('Failed to fetch resumes in drawer:', err)
+  }
+}
+
+const runGapAnalysis = async () => {
+  if (!job.value?.jobId) return
+  gapAnalyzing.value = true
+  try {
+    const res = await $fetch('/api/jobs/gap-analysis', {
+      method: 'POST',
+      body: {
+        jobId: job.value.jobId,
+        resumeProfileId: selectedResumeProfileId.value || undefined
+      }
+    })
+    if (res?.success) {
+      gapResult.value = res.data
+      ElMessage.success('JD 深度技能差距分析完成！')
+    } else {
+      ElMessage.error(res?.error || '差距分析失败')
+    }
+  } catch (err) {
+    ElMessage.error('差距分析服务异常: ' + (err.message || ''))
+  } finally {
+    gapAnalyzing.value = false
+  }
+}
+
+const runFullAnalysis = async () => {
+  if (!job.value?.jobId) return
+  analyzing.value = true
+  try {
+    const res = await $fetch('/api/jobs/analyze', {
+      method: 'POST',
+      body: {
+        jobId: job.value.jobId,
+        resumeProfileId: selectedResumeProfileId.value || undefined
+      }
+    })
+    if (res?.success) {
+      job.value.aiResult = res.data
+      ElMessage.success('全面匹配诊断已更新！')
+      emit('status-changed')
+    } else {
+      ElMessage.error(res?.error || '诊断失败')
+    }
+  } catch (err) {
+    ElMessage.error('诊断服务异常: ' + (err.message || ''))
+  } finally {
+    analyzing.value = false
+  }
+}
+
+const jobDiagnosis = computed(() => {
+  if (!job.value) return null
+  return getJobTimeDiagnosis(job.value)
+})
+
+const jobTimeline = computed(() => {
+  if (!job.value) return []
+  return getJobTimeline(job.value)
+})
+
+const isJobExpired = computed(() => {
+  if (!job.value) return false
+  const s = String(job.value.status || '').toLowerCase()
+  return s === 'expired' || s === '已失效' || s === '职位已关闭' || s === '已下线'
+})
+
+const formatDrawerDate = (d) => {
+  if (!d) return '-'
+  const date = new Date(d)
+  if (isNaN(date.getTime())) return String(d)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
 
 const generatePredictions = async () => {
   if (!job.value || !job.value.jobId) return
@@ -176,7 +423,10 @@ const generatePredictions = async () => {
   try {
     const res = await $fetch('/api/jobs/predict-questions', {
       method: 'POST',
-      body: { jobId: job.value.jobId }
+      body: {
+        jobId: job.value.jobId,
+        resumeProfileId: selectedResumeProfileId.value || undefined
+      }
     })
     
     if (res && res.success && res.data) {
@@ -200,7 +450,10 @@ const generateGreeting = async () => {
   try {
     const res = await $fetch('/api/jobs/generate-greeting', {
       method: 'POST',
-      body: { jobId: job.value.jobId }
+      body: {
+        jobId: job.value.jobId,
+        resumeProfileId: selectedResumeProfileId.value || undefined
+      }
     })
     
     if (res && res.success && res.data) {
@@ -225,6 +478,46 @@ const copyIntro = async () => {
   } catch (err) {
     console.error('Copy failed:', err)
     ElMessage.error('复制失败')
+  }
+}
+
+const handleToggleBlacklist = async (j) => {
+  if (!j) return
+  const comp = j.normalizedData?.companyFullName || j.normalizedData?.brandName || j.companyName
+  if (!comp) {
+    ElMessage.warning('未获取到该职位的公司名称')
+    return
+  }
+
+  if (j.isBlacklisted) {
+    try {
+      const res = await $fetch(`/api/blacklist?companyName=${encodeURIComponent(comp)}`, { method: 'DELETE' })
+      if (res && res.success) {
+        j.isBlacklisted = false
+        ElMessage.success(`已将【${comp}】移出黑名单`)
+        emit('status-changed')
+      } else {
+        ElMessage.error(res?.error || '移出失败')
+      }
+    } catch (err) {
+      ElMessage.error('移出黑名单失败: ' + err.message)
+    }
+  } else {
+    try {
+      const res = await $fetch('/api/blacklist', {
+        method: 'POST',
+        body: { companyName: comp, reason: '用户手动拉黑', source: 'manual' }
+      })
+      if (res && res.success) {
+        j.isBlacklisted = true
+        ElMessage.success(`已将【${comp}】加入黑名单`)
+        emit('status-changed')
+      } else {
+        ElMessage.error(res?.error || '拉黑失败')
+      }
+    } catch (err) {
+      ElMessage.error('加入黑名单失败: ' + err.message)
+    }
   }
 }
 
@@ -284,11 +577,18 @@ const copySkillResult = async () => {
   }
 }
 
-const open = (jobData) => {
+const open = (jobData, initialTab = 'ai') => {
   job.value = jobData
+  rightTab.value = initialTab
   visible.value = true
   activeSkillResult.value = ''
+  gapResult.value = null
   fetchSkills()
+  fetchResumeProfiles()
+}
+
+const onInterviewUpdated = () => {
+  emit('status-changed', job.value)
 }
 
 const markAsExpired = async (jobData) => {
@@ -394,6 +694,9 @@ const formatAiAnalysis = (text) => {
   if (!text) return '暂无分析结果'
   let formatted = String(text)
   
+  // Horizontal rules
+  formatted = formatted.replace(/^---$/gm, '\n\n<hr class="ai-hr" />\n\n')
+
   // Headers
   formatted = formatted.replace(/^### (.*?)$/gm, '\n\n<h3>$1</h3>\n\n')
   formatted = formatted.replace(/^## (.*?)$/gm, '\n\n<h2>$1</h2>\n\n')
@@ -414,7 +717,7 @@ const formatAiAnalysis = (text) => {
   formatted = formatted.split(/\n\s*\n/).map(block => {
     const trimmed = block.trim()
     if (!trimmed) return ''
-    if (trimmed.startsWith('<h') || trimmed.startsWith('<ul') || trimmed.startsWith('<ol')) {
+    if (trimmed.startsWith('<h') || trimmed.startsWith('<ul') || trimmed.startsWith('<ol') || trimmed.startsWith('<details') || trimmed.startsWith('<hr')) {
       return block
     }
     return `<p>${block.replace(/\n/g, '<br>')}</p>`
@@ -425,7 +728,7 @@ const formatAiAnalysis = (text) => {
 
 const getJobUrl = (jobData) => {
   if (!jobData) return ''
-  return jobData.normalizedData?.jobUrl || ''
+  return jobData.normalizedData?.jobUrl || jobData.jobUrl || jobData.url || ''
 }
 
 defineExpose({
@@ -435,10 +738,18 @@ defineExpose({
 
 <style scoped>
 /* Detailed Drawer Split Layout Styles */
+:deep(.el-drawer__header) {
+  display: none !important;
+  margin-bottom: 0 !important;
+  padding: 0 !important;
+}
+
 :deep(.el-drawer__body) {
-  padding: 0;
+  padding: 0 !important;
+  height: 100%;
   overflow: hidden;
 }
+
 .drawer-split-layout {
   display: flex;
   height: 100%;
@@ -450,62 +761,158 @@ defineExpose({
   flex: 3;
   display: flex;
   flex-direction: column;
+  height: 100%;
   overflow: hidden;
   background: #ffffff;
   border-right: 1px solid #e2e8f0;
 }
+
+.drawer-left-topbar {
+  height: 48px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 0 28px;
+  background: #ffffff;
+  border-bottom: 1px solid #f1f5f9;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.drawer-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.platform-mini-tag {
+  font-weight: 500;
+  border-radius: 4px;
+}
+
+.breadcrumb-sep {
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.breadcrumb-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 500;
+  color: #334155;
+}
+
+.breadcrumb-job-name {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breadcrumb-salary {
+  color: #0088fb;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.status-mini-tag {
+  margin-left: 4px;
+}
+
 .drawer-left-content {
   flex: 1;
-  padding: 24px 32px;
+  padding: 20px 28px;
   overflow-y: auto;
 }
+
 .drawer-left-footer {
-  padding: 16px 32px;
+  padding: 14px 28px;
   background: #ffffff;
   border-top: 1px solid #ebeef5;
-  box-shadow: 0 -4px 12px rgba(0,0,0,0.02);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.02);
   display: flex;
   justify-content: flex-start;
+  flex-shrink: 0;
 }
+
 .detail-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  gap: 16px;
   margin-bottom: 12px;
 }
+
 .detail-title {
   margin: 0;
-  font-size: 24px;
-  font-weight: 600;
-  color: #1e293b;
-  line-height: 1.3;
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.35;
 }
+
 .detail-salary {
   font-size: 22px;
-  font-weight: bold;
+  font-weight: 700;
   color: #0088fb;
   white-space: nowrap;
+  flex-shrink: 0;
 }
+
 .detail-sub-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 15px;
+  font-size: 14px;
   color: #475569;
   font-weight: 500;
   margin-bottom: 8px;
+  flex-wrap: wrap;
 }
+
+.client-company-sub {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  background-color: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #ffedd5;
+  padding: 1px 8px;
+  border-radius: 4px;
+}
+
+.client-company-sub .client-label {
+  color: #9a3412;
+  font-size: 12px;
+}
+
+.client-company-sub .client-val {
+  font-weight: 600;
+}
+
+.client-company-highlight {
+  color: #c2410c !important;
+  font-weight: 600 !important;
+}
+
 .detail-address {
-  font-size: 14px;
+  font-size: 13px;
   color: #64748b;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
+
 .detail-badges {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
+
 .badge-tag {
   background: #f1f5f9;
   border: none;
@@ -516,36 +923,175 @@ defineExpose({
 
 /* Stats Grid */
 .section-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: bold;
   color: #1e293b;
-  margin: 24px 0 16px 0;
+  margin: 20px 0 14px 0;
   display: flex;
   align-items: center;
   gap: 6px;
 }
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  gap: 14px;
   background: #f8fafc;
   padding: 16px;
   border-radius: 8px;
   border: 1px solid #e2e8f0;
 }
+
 .stat-box {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
+
 .stat-label {
-  font-size: 13px;
+  font-size: 12px;
   color: #64748b;
 }
+
 .stat-value {
-  font-size: 14px;
+  font-size: 13px;
   color: #1e293b;
   font-weight: 500;
+}
+
+/* Lifecycle Panel Styles */
+.lifecycle-panel {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.lifecycle-badge-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lifecycle-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid;
+  font-size: 13px;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.pill-title {
+  font-weight: 700;
+}
+
+.pill-days {
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.lifecycle-tip-box {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  color: #0369a1;
+  font-size: 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  line-height: 1.45;
+}
+
+.timeline-stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+  padding-left: 4px;
+}
+
+.timeline-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  position: relative;
+}
+
+.timeline-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 24px;
+  bottom: -10px;
+  width: 2px;
+  background-color: #e2e8f0;
+}
+
+.step-icon-wrap {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: white;
+  z-index: 1;
+}
+
+.step-icon-wrap.success { background-color: #16a34a; }
+.step-icon-wrap.primary { background-color: #0284c7; }
+.step-icon-wrap.warning { background-color: #ea580c; }
+.step-icon-wrap.info { background-color: #64748b; }
+
+.step-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 2px;
+}
+
+.step-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.step-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.step-time {
+  font-size: 12px;
+  font-weight: 500;
+  color: #334155;
+}
+
+.step-ago {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.step-sub {
+  font-size: 11px;
+  color: #94a3b8;
 }
 
 /* Tags and Description */
@@ -554,15 +1100,17 @@ defineExpose({
   flex-wrap: wrap;
   gap: 8px;
 }
+
 .welfare-tag {
   border-radius: 6px;
 }
+
 .job-desc {
-  font-size: 15px;
-  line-height: 1.8;
+  font-size: 14px;
+  line-height: 1.75;
   color: #334155;
   background: #f8fafc;
-  padding: 20px;
+  padding: 18px;
   border-radius: 8px;
   border: 1px solid #e2e8f0;
 }
@@ -570,10 +1118,113 @@ defineExpose({
 /* Right Panel (AI) */
 .drawer-right {
   flex: 2;
-  padding: 24px;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
   background: #f8fafc;
 }
+
+.drawer-right-topbar {
+  height: 48px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.drawer-right-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #f1f5f9;
+  padding: 3px;
+  border-radius: 8px;
+}
+
+.right-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.right-tab-btn:hover {
+  color: #1e293b;
+}
+
+.right-tab-btn.active {
+  background: #ffffff;
+  color: #0f172a;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.interview-topbar-icon {
+  color: #2563eb;
+  font-size: 15px;
+}
+
+.interview-panel-wrapper {
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+}
+
+.ai-topbar-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.ai-topbar-icon {
+  color: #7c3aed;
+  font-size: 16px;
+}
+
+.drawer-close-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.drawer-close-btn:hover {
+  background: #fee2e2;
+  color: #ef4444;
+  border-color: #fca5a5;
+  transform: scale(1.05);
+}
+
+.drawer-right-body {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+
 .ai-panel {
   display: flex;
   flex-direction: column;
@@ -632,6 +1283,30 @@ defineExpose({
 .ai-analysis-content p {
   margin: 8px 0;
 }
+.ai-analysis-content .ai-thinking-block {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 12px 0 16px 0;
+  font-size: 13px;
+  color: #64748b;
+}
+.ai-analysis-content .ai-thinking-block summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #475569;
+  user-select: none;
+}
+.ai-analysis-content .ai-thinking-block[open] summary {
+  margin-bottom: 10px;
+  color: #0284c7;
+}
+.ai-analysis-content .ai-hr {
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  margin: 18px 0;
+}
 
 .generator-section {
   display: flex;
@@ -651,5 +1326,31 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
+.resume-selector-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8fafc;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 16px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.selector-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.selector-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  white-space: nowrap;
+}
+
 }
 </style>

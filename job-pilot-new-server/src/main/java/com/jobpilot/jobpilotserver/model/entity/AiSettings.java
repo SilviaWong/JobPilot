@@ -14,8 +14,17 @@ public class AiSettings {
     private String id;
     private String activeProfileId;
     private String profiles;
+    private String resume;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    public String getResume() {
+        return this.resume;
+    }
+
+    public void setResume(String resume) {
+        this.resume = resume;
+    }
 
     public String getId() {
         return this.id;
