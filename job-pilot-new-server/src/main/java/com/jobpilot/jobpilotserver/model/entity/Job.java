@@ -3,6 +3,7 @@ package com.jobpilot.jobpilotserver.model.entity;
 import lombok.Data;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
@@ -41,8 +42,10 @@ public class Job {
     /** 商圈/片区 */
     private String businessDistrict;
     /** 职位原始链接 */
+    @TableField(exist = false)
     private String jobUrl;
     /** 职位描述 (JD) */
+    @TableField(exist = false)
     private String jobDesc;
     /** 技能标签列表 (JSON 数组字符串) */
     private String skills;
@@ -53,8 +56,10 @@ public class Job {
     /** HR 职位 */
     private String hrPosition;
     /** 首发日期 */
+    @TableField("platformPublishTime")
     private String publishDate;
     /** 最后更新日期 */
+    @TableField("platformUpdateTime")
     private String updateDate;
     /** 是否猎头/代招 */
     private Boolean isHeadhunter;

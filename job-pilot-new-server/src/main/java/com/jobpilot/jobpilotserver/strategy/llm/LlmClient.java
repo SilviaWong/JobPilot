@@ -12,13 +12,14 @@ import org.springframework.web.client.RestTemplate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.jobpilot.jobpilotserver.util.AiResponseParser;
 
 @Component
 public class LlmClient {
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public String callAI(String systemPrompt, String userPrompt, String apiUrl, String apiKey, String model) throws Exception {
+    public AiResponseParser.ExtractedAiResponse callAiWithReasoning(String systemPrompt, String userPrompt, String apiUrl, String apiKey, String model) throws Exception {
         String finalUrl = apiUrl.trim();
         String lowerModel = model.toLowerCase();
         boolean isClaude = lowerModel.contains("claude") || finalUrl.contains("anthropic");
@@ -33,7 +34,7 @@ public class LlmClient {
             headers.set("x-api-key", apiKey);
             headers.set("anthropic-version", "2023-06-01");
             reqBody.put("model", model);
-            reqBody.put("max_tokens", 2048);
+            reqBody.put("max_tokens", 2500);
             reqBody.put("system", systemPrompt);
             reqBody.put("messages", List.of(Map.of("role", "user", "content", userPrompt)));
         } else if (isGemini && !finalUrl.contains("chat/completions")) {
@@ -61,29 +62,17 @@ public class LlmClient {
         }
 
         JsonNode root = objectMapper.readTree(response.getBody());
-        String resultText = "";
+        com.jobpilot.jobpilotserver.util.AiResponseParser.ExtractedAiResponse extracted =
+                com.jobpilot.jobpilotserver.util.AiResponseParser.extractAiResponse(root);
 
-        if (isClaude && !finalUrl.contains("chat/completions")) {
-            if (root.has("content") && root.get("content").isArray() && root.get("content").size() > 0) {
-                resultText = root.get("content").get(0).path("text").asText("");
-            }
-        } else if (isGemini && !finalUrl.contains("chat/completions")) {
-            if (root.has("candidates") && root.get("candidates").isArray() && root.get("candidates").size() > 0) {
-                JsonNode parts = root.get("candidates").get(0).path("content").path("parts");
-                if (parts.isArray() && parts.size() > 0) {
-                    resultText = parts.get(0).path("text").asText("");
-                }
-            }
-        } else {
-            if (root.has("choices") && root.get("choices").isArray() && root.get("choices").size() > 0) {
-                resultText = root.get("choices").get(0).path("message").path("content").asText("");
-            }
-        }
-
-        if (resultText.trim().isEmpty()) {
+        if (extracted.content().isEmpty() && extracted.thinking().isEmpty()) {
             throw new RuntimeException("AI API 返回内容为空");
         }
 
-        return resultText.trim();
+        return extracted;
+    }
+
+    public String callAI(String systemPrompt, String userPrompt, String apiUrl, String apiKey, String model) throws Exception {
+        return callAiWithReasoning(systemPrompt, userPrompt, apiUrl, apiKey, model).content();
     }
 }
