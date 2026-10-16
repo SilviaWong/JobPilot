@@ -52,7 +52,17 @@ public class DashboardIntegrationTest {
         Map<String, Integer> platform = (Map<String, Integer>) data.get("platform");
         assertFalse(platform.isEmpty(), "Platform map should not be empty");
 
-        // 4. 薪资与经验分布校验
+        // 4. 城市分布与经验薪资矩阵校验 (Phase 2 扩展)
+        assertTrue(data.containsKey("city"), "Data must contain city map");
+        Map<String, Integer> city = (Map<String, Integer>) data.get("city");
+        assertFalse(city.isEmpty(), "City map should not be empty");
+        assertTrue(city.containsKey("上海"), "Top city Shanghai should be present");
+
+        assertTrue(data.containsKey("expSalaryMatrix"), "Data must contain expSalaryMatrix");
+        List<?> expSalaryMatrix = (List<?>) data.get("expSalaryMatrix");
+        assertFalse(expSalaryMatrix.isEmpty());
+
+        // 5. 薪资与经验分布校验
         assertTrue(data.containsKey("salary"), "Data must contain salary map");
         Map<String, Integer> salary = (Map<String, Integer>) data.get("salary");
         assertTrue(salary.containsKey("10k以下"));
@@ -63,7 +73,7 @@ public class DashboardIntegrationTest {
 
         assertTrue(data.containsKey("experience"), "Data must contain experience map");
 
-        // 5. 技能词频与 HR 活跃度
+        // 6. 技能词频与 HR 活跃度
         assertTrue(data.containsKey("skills"), "Data must contain skills map");
         assertTrue(data.containsKey("hrActive"), "Data must contain hrActive map");
         Map<String, Integer> hrActive = (Map<String, Integer>) data.get("hrActive");
@@ -91,17 +101,24 @@ public class DashboardIntegrationTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    public void testGetFunnelAnalytics() {
-        Result<Map<String, Object>> result = dashboardController.getFunnel(true);
-        assertNotNull(result);
-        assertTrue(result.getSuccess());
-        Map<String, Object> data = result.getData();
-        assertNotNull(data);
+    public void testGetFunnelAnalyticsWithTimeRange() {
+        // 全量时间窗口
+        Result<Map<String, Object>> resultAll = dashboardController.getFunnel("all", true);
+        assertNotNull(resultAll);
+        assertTrue(resultAll.getSuccess());
+        Map<String, Object> dataAll = resultAll.getData();
+        assertNotNull(dataAll);
+        assertEquals("all", dataAll.get("timeRange"));
+        assertTrue(dataAll.containsKey("kpi"));
+        assertTrue(dataAll.containsKey("funnelSteps"));
+        assertTrue(dataAll.containsKey("durations"));
+        assertTrue(dataAll.containsKey("rejectionBreakdown"));
+        assertTrue(dataAll.containsKey("stagnantJobs"));
 
-        assertTrue(data.containsKey("kpi"));
-        assertTrue(data.containsKey("funnelSteps"));
-        assertTrue(data.containsKey("durations"));
-        assertTrue(data.containsKey("rejectionBreakdown"));
-        assertTrue(data.containsKey("stagnantJobs"));
+        // 近 30 天时间窗口
+        Result<Map<String, Object>> result30d = dashboardController.getFunnel("30d", true);
+        assertNotNull(result30d);
+        assertTrue(result30d.getSuccess());
+        assertEquals("30d", result30d.getData().get("timeRange"));
     }
 }

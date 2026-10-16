@@ -1,5 +1,19 @@
 <template>
   <div class="funnel-view">
+    <!-- 统计时间窗口工具栏 -->
+    <div class="funnel-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: white; padding: 10px 16px; border-radius: 8px; border: 1px solid #e2e8f0;">
+      <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; color: #334155; font-size: 14px;">
+        <span>⏱️ 漏斗统计时间窗口:</span>
+        <span style="font-size: 12px; color: #94a3b8; font-weight: normal;">按投递、面试状态流转与创建时间回溯</span>
+      </div>
+      <el-radio-group :model-value="timeRange" size="small" @update:model-value="$emit('update:timeRange', $event)">
+        <el-radio-button value="all">全生命周期</el-radio-button>
+        <el-radio-button value="30d">近 30 天</el-radio-button>
+        <el-radio-button value="90d">近 90 天</el-radio-button>
+        <el-radio-button value="180d">近半年</el-radio-button>
+      </el-radio-group>
+    </div>
+
     <!-- Funnel KPI Row -->
     <div class="kpi-row">
       <div class="kpi-card">
@@ -145,10 +159,14 @@ const props = defineProps({
   funnelData: {
     type: Object,
     default: () => ({})
+  },
+  timeRange: {
+    type: String,
+    default: 'all'
   }
 })
 
-defineEmits(['select-job'])
+defineEmits(['select-job', 'update:timeRange'])
 
 const hasStagnant = computed(() => {
   return props.funnelData?.stagnantJobs?.length > 0

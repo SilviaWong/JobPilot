@@ -27,8 +27,8 @@ import java.util.stream.Collectors;
 /**
  * 数据大盘统计业务实现类
  * <p>
- * 负责聚合统计全库职位的薪资分布、经验要求分布、核心技能标签词频、平台岗位来源、HR活跃度画像及招聘时序趋势等，
- * 并提供求职漏斗转化率、阶段流转周期、滞留超时监控等深维度的分析能力。
+ * 负责聚合统计全库职位的薪资分布、经验要求分布、核心技能标签词频、平台岗位来源、城市分布、经验薪资矩阵、
+ * HR活跃度画像及招聘时序趋势等，并提供求职漏斗转化率、阶段流转周期、滞留超时监控等多时间窗口的分析能力。
  * 全面采用列投影、结构化数值直查与 Caffeine 高性能本地缓存。
  */
 @Service
@@ -91,24 +91,31 @@ public class DashboardServiceImpl implements DashboardService {
 
     @Override
     public Map<String, Object> getFunnelAnalytics() {
-        return getFunnelAnalytics(false);
+        return getFunnelAnalytics("all", false);
     }
 
     @Override
     public Map<String, Object> getFunnelAnalytics(boolean refresh) {
+        return getFunnelAnalytics("all", refresh);
+    }
+
+    @Override
+    public Map<String, Object> getFunnelAnalytics(String timeRange, boolean refresh) {
+        String range = (timeRange != null && !timeRange.trim().isEmpty()) ? timeRange.trim().toLowerCase() : "all";
+        String cacheKey = "funnel_" + range;
         if (!refresh && dashboardFunnelCache != null) {
-            Map<String, Object> cached = dashboardFunnelCache.getIfPresent("funnel");
+            Map<String, Object> cached = dashboardFunnelCache.getIfPresent(cacheKey);
             if (cached != null) {
                 return cached;
             }
         }
 
         long start = System.currentTimeMillis();
-        Map<String, Object> funnel = buildFunnelAnalytics();
-        log.info("Funnel analytics built in {}ms", (System.currentTimeMillis() - start));
+        Map<String, Object> funnel = buildFunnelAnalytics(range);
+        log.info("Funnel analytics ({}) built in {}ms", range, (System.currentTimeMillis() - start));
 
         if (dashboardFunnelCache != null) {
-            dashboardFunnelCache.put("funnel", funnel);
+            dashboardFunnelCache.put(cacheKey, funnel);
         }
         return funnel;
     }
@@ -125,13 +132,13 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
     /**
-     * 核心实现：轻量列投影查询 + 结构化快速聚合计算数据大盘
+     * 核心实现：轻量列投影查询 + 结构化快速聚合计算数据大盘（含城市排行与经验薪资矩阵）
      */
     private Map<String, Object> buildDashboardStats() {
         // 1. 轻量化列投影：剔除 rawData, rawData2, jobDesc 等大文本字段，极速传输
         QueryWrapper<Job> wrapper = new QueryWrapper<>();
         wrapper.select("title", "salaryAvg", "expMinYears", "expMaxYears", "experience",
-                "skills", "tags", "platform", "firstSeen", "lastSeen", "createdAt", "hrActiveLevel");
+                "skills", "tags", "platform", "firstSeen", "lastSeen", "createdAt", "hrActiveLevel", "city");
         List<Job> jobs = jobMapper.selectList(wrapper);
         if (jobs == null) jobs = Collections.emptyList();
 
@@ -144,6 +151,7 @@ public class DashboardServiceImpl implements DashboardService {
 
         Map<String, Integer> expDist = new LinkedHashMap<>();
         Map<String, Integer> platformDist = new LinkedHashMap<>();
+        Map<String, Integer> cityRawMap = new HashMap<>();
         Map<String, Integer> skillsDist = new HashMap<>();
 
         Map<String, Integer> hrActiveDist = new LinkedHashMap<>();
@@ -152,6 +160,14 @@ public class DashboardServiceImpl implements DashboardService {
         hrActiveDist.put("zombie", 0);
         hrActiveDist.put("stale", 0);
         hrActiveDist.put("unknown", 0);
+
+        // 经验-薪资交叉分析容器
+        Map<String, List<Double>> expSalaryMap = new LinkedHashMap<>();
+        expSalaryMap.put("应届/实习", new ArrayList<>());
+        expSalaryMap.put("1-3年", new ArrayList<>());
+        expSalaryMap.put("3-5年", new ArrayList<>());
+        expSalaryMap.put("5-10年", new ArrayList<>());
+        expSalaryMap.put("10年以上", new ArrayList<>());
 
         long now = System.currentTimeMillis();
         long ms7d = 7L * 24 * 60 * 60 * 1000L;
@@ -187,7 +203,14 @@ public class DashboardServiceImpl implements DashboardService {
                     ? job.getPlatform().trim() : "未知";
             platformDist.put(plat, platformDist.getOrDefault(plat, 0) + 1);
 
-            // 2. 时间计算（优先 firstSeen，降级使用 createdAt）
+            // 2. 城市分布统计
+            String rawCity = job.getCity();
+            if (rawCity != null && !rawCity.trim().isEmpty()) {
+                String cleanCity = rawCity.trim();
+                cityRawMap.put(cleanCity, cityRawMap.getOrDefault(cleanCity, 0) + 1);
+            }
+
+            // 3. 时间计算（优先 firstSeen，降级使用 createdAt）
             LocalDateTime seenDt = job.getFirstSeen() != null ? job.getFirstSeen() : job.getCreatedAt();
             long seenTime = seenDt != null ? seenDt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli() : now;
             long diff = now - seenTime;
@@ -196,7 +219,7 @@ public class DashboardServiceImpl implements DashboardService {
             if (diff <= ms30d) recent30d++;
             if (diff >= ms60d) stale60d++;
 
-            // 3. HR 活跃度统计（结合最后抓取时间衰减模型）
+            // 4. HR 活跃度统计（结合最后抓取时间衰减模型）
             String hrLevel = (job.getHrActiveLevel() != null && !job.getHrActiveLevel().trim().isEmpty())
                     ? job.getHrActiveLevel().trim().toLowerCase() : "unknown";
             LocalDateTime syncDt = job.getLastSeen() != null ? job.getLastSeen()
@@ -224,15 +247,15 @@ public class DashboardServiceImpl implements DashboardService {
                 hrActiveDist.put("unknown", hrActiveDist.get("unknown") + 1);
             }
 
-            // 4. 时序招聘趋势归档
+            // 5. 时序招聘趋势归档
             if (seenDt != null) {
                 LocalDate seenDate = seenDt.toLocalDate();
 
-                // 4.1 月度趋势
+                // 5.1 月度趋势
                 String monthKey = seenDate.format(DateTimeFormatter.ofPattern("yyyy-MM"));
                 monthlyMap.put(monthKey, monthlyMap.getOrDefault(monthKey, 0) + 1);
 
-                // 4.2 周度趋势 (计算当周周一与周日)
+                // 5.2 周度趋势 (计算当周周一与周日)
                 LocalDate mon = seenDate.with(DayOfWeek.MONDAY);
                 LocalDate sun = mon.plusDays(6);
                 String weekKey = mon.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
@@ -242,7 +265,7 @@ public class DashboardServiceImpl implements DashboardService {
                 WeeklyTrendBucket bucket = weeklyMap.computeIfAbsent(weekKey, k -> new WeeklyTrendBucket(weekLabel, monTimestamp));
                 bucket.count++;
 
-                // 4.3 近 30 天每日走势
+                // 5.3 近 30 天每日走势
                 if (diff <= ms30d) {
                     String dayKey = seenDate.format(dayFmt);
                     if (dailyMap.containsKey(dayKey)) {
@@ -251,7 +274,7 @@ public class DashboardServiceImpl implements DashboardService {
                 }
             }
 
-            // 5. 薪资区间分布解析 (基于结构化数值 salaryAvg，无需正则与降级)
+            // 6. 薪资区间分布解析 (基于结构化数值 salaryAvg，无需正则与降级)
             Double salaryAvg = job.getSalaryAvg();
             if (salaryAvg != null && salaryAvg > 0) {
                 if (salaryAvg < 10.0) salaryDist.put("10k以下", salaryDist.get("10k以下") + 1);
@@ -262,7 +285,7 @@ public class DashboardServiceImpl implements DashboardService {
                 salaryDist.put("面议", salaryDist.get("面议") + 1);
             }
 
-            // 6. 经验要求分布解析 (基于结构化工作年限 expMinYears)
+            // 7. 经验要求分布解析 (基于结构化工作年限 expMinYears)
             String exp = "其他/不限";
             Integer minYears = job.getExpMinYears();
             Integer maxYears = job.getExpMaxYears();
@@ -288,7 +311,12 @@ public class DashboardServiceImpl implements DashboardService {
             }
             expDist.put(exp, expDist.getOrDefault(exp, 0) + 1);
 
-            // 7. 技能关键词提取 (直接利用结构化 skills 数组)
+            // 7.1 经验-薪资交叉分析累加
+            if (salaryAvg != null && salaryAvg > 0 && expSalaryMap.containsKey(exp)) {
+                expSalaryMap.get(exp).add(salaryAvg);
+            }
+
+            // 8. 技能关键词提取 (直接利用结构化 skills 数组)
             if (job.getSkills() != null && !job.getSkills().trim().isEmpty()) {
                 try {
                     List<String> parsedSkills = objectMapper.readValue(job.getSkills(), new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
@@ -329,7 +357,43 @@ public class DashboardServiceImpl implements DashboardService {
             }
         }
 
-        // 8. 格式化趋势数据
+        // 9. 格式化城市前 10 排行榜与其他
+        List<Map.Entry<String, Integer>> sortedCities = cityRawMap.entrySet().stream()
+                .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
+                .collect(Collectors.toList());
+
+        Map<String, Integer> cityDist = new LinkedHashMap<>();
+        int topN = Math.min(10, sortedCities.size());
+        int otherCount = 0;
+        for (int i = 0; i < topN; i++) {
+            cityDist.put(sortedCities.get(i).getKey(), sortedCities.get(i).getValue());
+        }
+        for (int i = topN; i < sortedCities.size(); i++) {
+            otherCount += sortedCities.get(i).getValue();
+        }
+        if (otherCount > 0) {
+            cityDist.put("其他城市", otherCount);
+        }
+
+        // 10. 格式化经验-平均薪资矩阵
+        List<Map<String, Object>> expSalaryMatrix = new ArrayList<>();
+        for (Map.Entry<String, List<Double>> entry : expSalaryMap.entrySet()) {
+            String expKey = entry.getKey();
+            List<Double> list = entry.getValue();
+            double avg = 0.0;
+            if (!list.isEmpty()) {
+                double sum = 0.0;
+                for (Double d : list) sum += d;
+                avg = Math.round((sum / list.size()) * 10.0) / 10.0;
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("experience", expKey);
+            item.put("avgSalary", avg);
+            item.put("count", list.size());
+            expSalaryMatrix.add(item);
+        }
+
+        // 11. 格式化趋势数据
         List<Map<String, Object>> monthlyTrend = new ArrayList<>();
         for (Map.Entry<String, Integer> e : monthlyMap.entrySet()) {
             Map<String, Object> item = new HashMap<>();
@@ -364,7 +428,7 @@ public class DashboardServiceImpl implements DashboardService {
         trends.put("weekly", weeklyTrend);
         trends.put("daily", dailyTrend);
 
-        // 9. 宏观核心 KPI 计算
+        // 12. 宏观核心 KPI 计算
         Map<String, Object> kpi = new LinkedHashMap<>();
         kpi.put("totalJobs", jobs.size());
         kpi.put("recent7d", recent7d);
@@ -375,12 +439,14 @@ public class DashboardServiceImpl implements DashboardService {
         kpi.put("newJobRatio", newJobRatio);
         kpi.put("zombieRatio", zombieRatio);
 
-        // 10. 组装并返回标准数据结构
+        // 13. 组装并返回标准数据结构
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("salary", salaryDist);
         data.put("experience", expDist);
         data.put("skills", skillsDist);
         data.put("platform", platformDist);
+        data.put("city", cityDist);
+        data.put("expSalaryMatrix", expSalaryMatrix);
         data.put("totalJobs", jobs.size());
         data.put("hrActive", hrActiveDist);
         data.put("kpi", kpi);
@@ -400,9 +466,11 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
     /**
-     * 求职转化漏斗业务实现：轻量列投影 + 阶段耗时与滞留超时监控
+     * 求职转化漏斗业务实现：支持多时间窗口筛选 + 轻量列投影 + 阶段耗时与滞留超时监控
+     *
+     * @param timeRange 时间范围：all (全部), 30d (近30天), 90d (近90天), 180d (近半年)
      */
-    private Map<String, Object> buildFunnelAnalytics() {
+    private Map<String, Object> buildFunnelAnalytics(String timeRange) {
         long now = System.currentTimeMillis();
         final long DAY_MS = 24 * 60 * 60 * 1000L;
 
@@ -411,6 +479,19 @@ public class DashboardServiceImpl implements DashboardService {
         candidateWrapper.select("id", "jobId", "title", "companyName", "salary", "platform",
                         "applyStatus", "isFavorited", "appliedAt", "statusUpdatedAt", "createdAt")
                 .and(w -> w.isNotNull("applyStatus").ne("applyStatus", "none").or().eq("isFavorited", true));
+
+        int days = 0;
+        if ("30d".equalsIgnoreCase(timeRange)) days = 30;
+        else if ("90d".equalsIgnoreCase(timeRange)) days = 90;
+        else if ("180d".equalsIgnoreCase(timeRange)) days = 180;
+
+        if (days > 0) {
+            LocalDateTime cutoffDt = LocalDate.now().minusDays(days).atStartOfDay();
+            candidateWrapper.and(w -> w.ge("appliedAt", cutoffDt)
+                    .or().ge("statusUpdatedAt", cutoffDt)
+                    .or().ge("createdAt", cutoffDt));
+        }
+
         List<Job> candidateJobs = jobMapper.selectList(candidateWrapper);
         if (candidateJobs == null) candidateJobs = new ArrayList<>();
 
@@ -432,7 +513,7 @@ public class DashboardServiceImpl implements DashboardService {
             }
         }
 
-        // 如果有些职位状态为 none 且未收藏，但有 interview 或 statusLog，也加入统计池
+        // 如果有些职位状态为 none 且未收藏，但有 interview 或 statusLog，且在时间范围内，也加入统计池
         Set<String> trackedJobIds = candidateJobs.stream().map(Job::getId).collect(Collectors.toSet());
         List<String> missingJobIds = new ArrayList<>();
         for (String jId : interviewMap.keySet()) {
@@ -448,6 +529,12 @@ public class DashboardServiceImpl implements DashboardService {
             addWrapper.select("id", "jobId", "title", "companyName", "salary", "platform",
                             "applyStatus", "isFavorited", "appliedAt", "statusUpdatedAt", "createdAt")
                     .in("id", missingJobIds);
+            if (days > 0) {
+                LocalDateTime cutoffDt = LocalDate.now().minusDays(days).atStartOfDay();
+                addWrapper.and(w -> w.ge("appliedAt", cutoffDt)
+                        .or().ge("statusUpdatedAt", cutoffDt)
+                        .or().ge("createdAt", cutoffDt));
+            }
             List<Job> additionalJobs = jobMapper.selectList(addWrapper);
             if (additionalJobs != null) {
                 jobs.addAll(additionalJobs);
@@ -718,6 +805,7 @@ public class DashboardServiceImpl implements DashboardService {
         result.put("rejectionBreakdown", rejectionList);
         result.put("weeklyTimeline", weeklyTimeline);
         result.put("stagnantJobs", stagnantJobs);
+        result.put("timeRange", timeRange);
 
         return result;
     }

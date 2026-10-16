@@ -22,8 +22,10 @@ public class DashboardController {
     }
 
     @GetMapping("/funnel")
-    public Result<Map<String, Object>> getFunnel(@RequestParam(defaultValue = "false") boolean refresh) {
-        return Result.success(dashboardService.getFunnelAnalytics(refresh));
+    public Result<Map<String, Object>> getFunnel(
+            @RequestParam(required = false, defaultValue = "all") String timeRange,
+            @RequestParam(defaultValue = "false") boolean refresh) {
+        return Result.success(dashboardService.getFunnelAnalytics(timeRange, refresh));
     }
 
     @PostMapping("/refresh")

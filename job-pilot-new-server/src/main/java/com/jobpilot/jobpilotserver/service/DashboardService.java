@@ -7,5 +7,6 @@ public interface DashboardService {
     Map<String, Object> getDashboardStats(boolean refresh);
     Map<String, Object> getFunnelAnalytics();
     Map<String, Object> getFunnelAnalytics(boolean refresh);
+    Map<String, Object> getFunnelAnalytics(String timeRange, boolean refresh);
     void invalidateDashboardCache();
 }

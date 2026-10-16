@@ -34,6 +34,8 @@
     <FunnelDashboardView
       v-else-if="activeView === 'funnel'"
       :funnel-data="funnelData"
+      :time-range="funnelTimeRange"
+      @update:timeRange="handleTimeRangeChange"
       @select-job="openJobDrawer"
     />
 
@@ -84,17 +86,25 @@
       </div>
 
       <div class="charts-row">
-        <!-- Salary Chart -->
+        <!-- Salary Chart (With View Switcher: 区间 vs 各工作年限均薪) -->
         <div class="chart-card">
-          <h3 class="chart-title">平均薪资分布 (区间)</h3>
+          <div class="card-header-with-controls" style="margin-bottom: 12px;">
+            <div class="card-title-group">
+              <h3 class="chart-title" style="margin: 0;">💰 薪资宏观透视</h3>
+            </div>
+            <el-radio-group v-model="salaryViewMode" size="small">
+              <el-radio-button value="range">薪资区间分布</el-radio-button>
+              <el-radio-button value="matrix">各年限平均月薪</el-radio-button>
+            </el-radio-group>
+          </div>
           <ClientOnly>
-            <v-chart class="chart" :option="salaryChartOption" autoresize />
+            <v-chart class="chart" :option="salaryViewMode === 'range' ? salaryChartOption : expSalaryChartOption" autoresize />
           </ClientOnly>
         </div>
 
         <!-- Experience Chart -->
         <div class="chart-card">
-          <h3 class="chart-title">经验要求占比</h3>
+          <h3 class="chart-title">🎓 经验要求占比</h3>
           <ClientOnly>
             <v-chart class="chart" :option="expChartOption" autoresize />
           </ClientOnly>
@@ -107,6 +117,24 @@
           <h3 class="chart-title">🌐 招聘平台岗位来源</h3>
           <ClientOnly>
             <v-chart class="chart" :option="platformChartOption" autoresize />
+          </ClientOnly>
+        </div>
+
+        <!-- HR Active Distribution Chart -->
+        <div class="chart-card">
+          <h3 class="chart-title">⚡ HR 活跃度画像与岗位鲜度</h3>
+          <ClientOnly>
+            <v-chart class="chart" :option="hrActiveChartOption" autoresize />
+          </ClientOnly>
+        </div>
+      </div>
+
+      <div class="charts-row">
+        <!-- City Distribution Chart -->
+        <div class="chart-card">
+          <h3 class="chart-title">🏙️ 重点城市招聘需求排行</h3>
+          <ClientOnly>
+            <v-chart class="chart" :option="cityChartOption" autoresize />
           </ClientOnly>
         </div>
 
@@ -158,15 +186,40 @@ const funnelData = ref(null)
 const totalJobs = ref(0)
 const trendDimension = ref('weekly')
 const activeView = ref('funnel')
+const salaryViewMode = ref('range')
+const funnelTimeRange = ref('all')
 const jobDrawerRef = ref(null)
+
+const fetchFunnelData = async (timeRange = funnelTimeRange.value, refresh = false) => {
+  try {
+    const params = new URLSearchParams()
+    if (timeRange && timeRange !== 'all') params.set('timeRange', timeRange)
+    if (refresh) params.set('refresh', 'true')
+    const qs = params.toString() ? `?${params.toString()}` : ''
+    const res = await $fetch(`/api/dashboard/funnel${qs}`)
+    if (res?.success) {
+      funnelData.value = res.data
+    }
+  } catch (e) {
+    console.error('Failed to fetch funnel data:', e)
+  }
+}
+
+const handleTimeRangeChange = (val) => {
+  funnelTimeRange.value = val
+  fetchFunnelData(val, false)
+}
 
 const fetchData = async (refresh = false) => {
   loading.value = true
   try {
     const query = refresh ? '?refresh=true' : ''
+    const funnelQuery = refresh
+      ? `?refresh=true&timeRange=${funnelTimeRange.value}`
+      : (funnelTimeRange.value !== 'all' ? `?timeRange=${funnelTimeRange.value}` : '')
     const [dashRes, funnelRes] = await Promise.all([
       $fetch(`/api/dashboard${query}`),
-      $fetch(`/api/dashboard/funnel${query}`)
+      $fetch(`/api/dashboard/funnel${funnelQuery}`)
     ])
 
     if (dashRes?.success) {
@@ -285,6 +338,69 @@ const salaryChartOption = computed(() => {
   }
 })
 
+// Experience-Salary Matrix Options (各工作年限平均薪资)
+const expSalaryChartOption = computed(() => {
+  if (!statsData.value?.expSalaryMatrix) return {}
+  const list = statsData.value.expSalaryMatrix || []
+  const xData = list.map(i => i.experience)
+  const yData = list.map(i => i.avgSalary)
+
+  return {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: (params) => {
+        const item = params[0]
+        const raw = list[item.dataIndex]
+        return `<b>${item.name}</b><br/>平均月薪: <span style="color:#059669;font-weight:bold;">${item.value} K</span><br/>样本统计数: ${raw?.count || 0} 个`
+      }
+    },
+    grid: { left: '3%', right: '4%', bottom: '5%', top: '15%', containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: xData,
+      axisTick: { alignWithLabel: true },
+      axisLabel: { color: '#64748b', fontSize: 11 }
+    },
+    yAxis: {
+      type: 'value',
+      name: '平均薪资 (K/月)',
+      nameTextStyle: { color: '#64748b' },
+      splitLine: { lineStyle: { stroke: '#f1f5f9', type: 'dashed' } }
+    },
+    series: [
+      {
+        name: '平均薪资',
+        type: 'bar',
+        barWidth: '40%',
+        data: yData,
+        itemStyle: {
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: '#10b981' },
+              { offset: 1, color: '#059669' }
+            ]
+          },
+          borderRadius: [4, 4, 0, 0]
+        },
+        label: {
+          show: true,
+          position: 'top',
+          formatter: '{c}k',
+          color: '#059669',
+          fontWeight: 'bold',
+          fontSize: 11
+        }
+      }
+    ]
+  }
+})
+
 // Experience Chart Options
 const expChartOption = computed(() => {
   if (!statsData.value) return {}
@@ -346,6 +462,107 @@ const platformChartOption = computed(() => {
       }
     ],
     color: ['#00bebd', '#ff6000', '#2563eb', '#3b82f6', '#8b5cf6']
+  }
+})
+
+// HR Active Level Distribution Chart Options
+const hrActiveChartOption = computed(() => {
+  if (!statsData.value?.hrActive) return {}
+  const raw = statsData.value.hrActive
+  const labelMap = {
+    active: '活跃 HR (7天内)',
+    moderate: '正常沟通 (30天内)',
+    stale: '沉寂超时 (>30天)',
+    zombie: '疑似僵尸岗',
+    unknown: '未标记状态'
+  }
+  const colorMap = {
+    active: '#10b981',
+    moderate: '#3b82f6',
+    stale: '#f59e0b',
+    zombie: '#ef4444',
+    unknown: '#94a3b8'
+  }
+  const pieData = Object.keys(raw)
+    .filter(k => raw[k] > 0)
+    .map(k => ({
+      name: labelMap[k] || k,
+      value: raw[k],
+      itemStyle: { color: colorMap[k] || '#cbd5e1' }
+    }))
+
+  return {
+    tooltip: { trigger: 'item', formatter: '{b}: {c}个 ({d}%)' },
+    legend: { top: '5%', left: 'center', textStyle: { fontSize: 12 } },
+    series: [
+      {
+        name: 'HR 活跃度',
+        type: 'pie',
+        radius: ['40%', '70%'],
+        avoidLabelOverlap: false,
+        itemStyle: {
+          borderRadius: 8,
+          borderColor: '#fff',
+          borderWidth: 2
+        },
+        data: pieData
+      }
+    ]
+  }
+})
+
+// City Distribution Chart Options (重点招聘城市排行)
+const cityChartOption = computed(() => {
+  if (!statsData.value?.city) return {}
+  const raw = statsData.value.city
+  const cities = Object.keys(raw).reverse()
+  const counts = Object.values(raw).reverse()
+
+  return {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: '{b}: <b>{c} 个岗位</b>'
+    },
+    grid: { left: '3%', right: '10%', bottom: '5%', top: '5%', containLabel: true },
+    xAxis: {
+      type: 'value',
+      splitLine: { lineStyle: { stroke: '#f1f5f9', type: 'dashed' } }
+    },
+    yAxis: {
+      type: 'category',
+      data: cities,
+      axisTick: { alignWithLabel: true },
+      axisLabel: { color: '#334155', fontWeight: 500, fontSize: 12 }
+    },
+    series: [
+      {
+        name: '岗位数量',
+        type: 'bar',
+        barWidth: '55%',
+        data: counts,
+        itemStyle: {
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 1,
+            y2: 0,
+            colorStops: [
+              { offset: 0, color: '#38bdf8' },
+              { offset: 1, color: '#2563eb' }
+            ]
+          },
+          borderRadius: [0, 4, 4, 0]
+        },
+        label: {
+          show: true,
+          position: 'right',
+          color: '#64748b',
+          fontSize: 11
+        }
+      }
+    ]
   }
 })
 
