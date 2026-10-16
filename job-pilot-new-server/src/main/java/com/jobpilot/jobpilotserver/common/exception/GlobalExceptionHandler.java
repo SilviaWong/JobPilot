@@ -59,6 +59,15 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 静态资源或路径不存在异常 (Spring 6.1+ / Spring Boot 3)
+     */
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public Result<Void> handleNoResourceFoundException(org.springframework.web.servlet.resource.NoResourceFoundException e) {
+        log.warn("Resource or path not found: {}", e.getResourcePath());
+        return Result.error(ResultCode.NOT_FOUND, "请求的接口或资源不存在: " + e.getResourcePath());
+    }
+
+    /**
      * 未知兜底异常
      */
     @ExceptionHandler(Exception.class)

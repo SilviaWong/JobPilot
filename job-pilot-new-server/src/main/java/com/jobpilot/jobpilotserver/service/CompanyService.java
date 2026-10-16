@@ -16,4 +16,5 @@ public interface CompanyService extends IService<Company> {
     boolean removeBlacklist(String companyName);
     boolean mergeCompanies(String targetName, List<String> sourceNames);
     boolean putAgency(String companyName, boolean isAgency);
+    void invalidatePanoramaCache();
 }

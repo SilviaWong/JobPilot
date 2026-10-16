@@ -577,7 +577,7 @@ const copySkillResult = async () => {
   }
 }
 
-const open = (jobData, initialTab = 'ai') => {
+const open = async (jobData, initialTab = 'ai') => {
   job.value = jobData
   rightTab.value = initialTab
   visible.value = true
@@ -585,6 +585,18 @@ const open = (jobData, initialTab = 'ai') => {
   gapResult.value = null
   fetchSkills()
   fetchResumeProfiles()
+
+  // 懒加载：如果职位描述为空（来自轻量级企业全景列表），异步补全完整详情
+  if (!jobData?.jobDesc && (jobData?.id || jobData?.jobId)) {
+    try {
+      const res = await $fetch(`/api/jobs/${jobData.id || jobData.jobId}`)
+      if (res?.success && res.data) {
+        job.value = { ...jobData, ...res.data }
+      }
+    } catch (e) {
+      console.warn('Failed to lazy load job full detail:', e)
+    }
+  }
 }
 
 const onInterviewUpdated = () => {

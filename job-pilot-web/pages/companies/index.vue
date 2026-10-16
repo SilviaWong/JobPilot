@@ -70,7 +70,7 @@
                 <span>🔍</span>
               </template>
             </el-input>
-            <el-button type="primary" size="small" @click="handleFilterChange" :loading="loading">
+            <el-button type="primary" size="small" @click="handleRefresh" :loading="loading">
               刷新数据
             </el-button>
           </div>
@@ -458,7 +458,7 @@ const toggleAgency = async (company) => {
   }
 }
 
-const fetchCompanies = async () => {
+const fetchCompanies = async (forceRefresh = false) => {
   loading.value = true
   try {
     const res = await $fetch('/api/companies', {
@@ -469,13 +469,17 @@ const fetchCompanies = async () => {
         status: status.value,
         agencyFilter: agencyFilter.value,
         platformFilter: platformFilter.value,
-        cityFilter: cityFilter.value
+        cityFilter: cityFilter.value,
+        refresh: forceRefresh ? true : undefined
       }
     })
 
     if (res.success) {
       companies.value = res.data || []
       totalCompanies.value = res.total || 0
+      if (forceRefresh) {
+        ElMessage.success('全景数据与缓存已主动刷新')
+      }
     }
   } catch (error) {
     console.error('Failed to fetch companies:', error)
@@ -487,7 +491,12 @@ const fetchCompanies = async () => {
 
 const handleFilterChange = () => {
   page.value = 1
-  fetchCompanies()
+  fetchCompanies(false)
+}
+
+const handleRefresh = () => {
+  page.value = 1
+  fetchCompanies(true)
 }
 
 const handleSizeChange = (val) => {

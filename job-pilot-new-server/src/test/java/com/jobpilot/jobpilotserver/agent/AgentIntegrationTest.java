@@ -9,6 +9,7 @@ import com.jobpilot.jobpilotserver.agent.tool.AgentTool;
 import com.jobpilot.jobpilotserver.agent.tool.JobAgentTools;
 import com.jobpilot.jobpilotserver.controller.AgentController;
 import com.jobpilot.jobpilotserver.util.AiResponseParser;
+import com.jobpilot.jobpilotserver.model.entity.StandardQuestion;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -29,6 +30,21 @@ public class AgentIntegrationTest {
 
     @Autowired
     private AgentController agentController;
+
+    @Autowired
+    private com.jobpilot.jobpilotserver.controller.QuestionController questionController;
+
+    @Test
+    public void testQuestionControllerGetQuestions() {
+        var res = questionController.getQuestions(1, 10, "", "全部");
+        assertNotNull(res);
+        assertNotNull(res.getData());
+        if (!res.getData().isEmpty()) {
+            StandardQuestion q = (StandardQuestion) res.getData().get(0);
+            assertNotNull(q.getTitle());
+            assertNotNull(q.getCreatedAt());
+        }
+    }
 
     @Test
     public void testAiResponseParser() {

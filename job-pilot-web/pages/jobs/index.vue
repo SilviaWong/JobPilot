@@ -24,6 +24,17 @@
                 <el-option label="智联招聘" value="智联"></el-option>
                 <el-option label="猎聘" value="猎聘"></el-option>
               </el-select>
+              <el-select v-model="cityFilter" placeholder="全部城市" style="width: 115px" @change="() => fetchJobs(false)">
+                <el-option label="全部城市" value="all"></el-option>
+                <el-option label="上海" value="310100"></el-option>
+                <el-option label="杭州" value="330100"></el-option>
+                <el-option label="深圳" value="440300"></el-option>
+                <el-option label="苏州" value="320500"></el-option>
+                <el-option label="北京" value="110100"></el-option>
+                <el-option label="广州" value="440100"></el-option>
+                <el-option label="南京" value="320100"></el-option>
+                <el-option label="其他城市" value="other"></el-option>
+              </el-select>
               <el-select v-model="educationFilter" placeholder="全部学历" style="width: 120px" @change="() => fetchJobs(false)">
                 <el-option label="全部学历" value="all"></el-option>
                 <el-option label="不限" value="不限"></el-option>
@@ -44,6 +55,28 @@
                 <el-option label="20k-30k" value="20-30"></el-option>
                 <el-option label="30k-50k" value="30-50"></el-option>
                 <el-option label="50k以上" value="50-999"></el-option>
+              </el-select>
+              <el-select v-model="lifecycleFilter" placeholder="时效筛选" style="width: 140px" @change="() => fetchJobs(false)">
+                <el-option label="全部时效" value="all"></el-option>
+                <el-option label="🟢 新发 (7天内)" value="new_7d"></el-option>
+                <el-option label="⚡ 活跃 (3天内刷新)" value="active_3d"></el-option>
+                <el-option label="🔥 活跃 (30天内)" value="new_30d"></el-option>
+                <el-option label="⚠️ 常驻 (>60天)" value="stale_60d"></el-option>
+              </el-select>
+              <el-select v-model="sortBy" placeholder="排序方式" style="width: 155px" @change="() => fetchJobs(false)">
+                <el-option label="🕒 最近变动" value="updatedAt"></el-option>
+                <el-option label="✨ 最新首发" value="publishTime"></el-option>
+                <el-option label="🔄 最新刷新" value="updateTime"></el-option>
+                <el-option label="📥 最新收录" value="firstSeen"></el-option>
+                <el-option label="🤖 AI 评分从高到低" value="aiScoreDesc"></el-option>
+                <el-option label="🤖 AI 评分从低到高" value="aiScoreAsc"></el-option>
+                <el-option label="💰 薪资从高到低" value="salaryDesc"></el-option>
+                <el-option label="💴 薪资从低到高" value="salaryAsc"></el-option>
+              </el-select>
+              <el-select v-model="headhunterFilter" placeholder="招聘来源" style="width: 145px" @change="() => fetchJobs(false)">
+                <el-option label="全部来源" value="all"></el-option>
+                <el-option label="🏢 仅看直招" value="direct"></el-option>
+                <el-option label="🤝 仅看猎头/外包" value="headhunter"></el-option>
               </el-select>
               <el-radio-group v-model="statusFilter" size="small" @change="() => fetchJobs(false)">
                 <el-radio-button value="all">全部</el-radio-button>
@@ -89,14 +122,17 @@
                 </el-button>
               </template>
 
-              <el-button v-if="!batchAnalyzing" type="success" size="small" @click="handleBatchAiDiagnosis" :disabled="loading">
+              <el-button type="primary" plain size="small" @click="handleAgentInspection">
+                <el-icon><Sparkles /></el-icon>&nbsp;🤖 AI 智能巡检
+              </el-button>
+              <el-button v-if="!batchAnalyzing" type="success" size="small" @click="handleBatchAiDiagnosis" :disabled="loading && !batchOpening && !batchAnalyzing">
                 <el-icon><Bot /></el-icon>&nbsp;批量 AI 诊断
               </el-button>
               <el-button v-else type="danger" size="small" @click="cancelBatchAiDiagnosis">
                 <el-icon><Loader2 class="is-loading" /></el-icon>&nbsp;取消诊断
               </el-button>
               
-              <el-button v-if="!batchOpening" type="warning" size="small" @click="handleBatchOpenUrls" :disabled="loading || batchAnalyzing">
+              <el-button v-if="!batchOpening" type="warning" size="small" @click="handleBatchOpenUrls" :disabled="loading && !batchOpening && !batchAnalyzing">
                 <el-icon><ExternalLink /></el-icon>&nbsp;批量打开网页
               </el-button>
               <el-button v-else type="danger" size="small" @click="cancelBatchOpenUrls">
@@ -144,7 +180,15 @@
 
             <!-- Company -->
             <div class="job-company">
-              <span class="company-link">{{ job.normalizedData?.companyFullName || job.normalizedData?.brandName || job.companyName }}</span>
+              <span class="company-link" :title="job.companyFullName && job.companyFullName !== job.companyName ? `主体全称：${job.companyFullName}（品牌名：${job.companyName}）` : (job.companyFullName || job.companyName)">
+                {{ job.companyFullName || job.companyName }}
+                <span 
+                  v-if="job.companyName && job.companyFullName && job.companyName !== job.companyFullName" 
+                  class="company-brand-sub"
+                >
+                  ({{ job.companyName }})
+                </span>
+              </span>
             </div>
 
             <!-- Tags -->
@@ -152,6 +196,24 @@
               <!-- Special status badges -->
               <el-tag v-if="job.status === JobStatus.EXPIRED" type="danger" size="small" effect="dark" style="border: none;">已失效</el-tag>
               
+              <!-- 智能时效诊断标记 (结合首发时间、刷新状态与挂牌天数) -->
+              <el-tooltip
+                placement="top"
+                :content="getJobDiagnosis(job).advice"
+                :show-after="300"
+              >
+                <span 
+                  class="tag-item job-lifecycle-badge"
+                  :style="{ 
+                    color: getJobDiagnosis(job).badgeColor, 
+                    backgroundColor: getJobDiagnosis(job).badgeBg, 
+                    borderColor: getJobDiagnosis(job).badgeColor + '55' 
+                  }"
+                >
+                  {{ getJobDiagnosis(job).badgeText }}
+                </span>
+              </el-tooltip>
+
               <template v-if="job.isHidden && job.tags && Array.isArray(job.tags) && job.tags.length > 0">
                 <el-tag v-for="(t, idx) in job.tags" :key="'reason-'+idx" type="info" size="small" effect="dark" style="border: none;">
                   🚫 {{ t }}
@@ -173,14 +235,45 @@
                 <span class="tag-item" v-for="(tag, idx) in job.normalizedData.welfareList.slice(0, 5)" :key="idx">{{ tag }}</span>
               </template>
               <!-- 猎头/代招标签，如果前面有其他标签，加一点间隔 -->
-              <span class="tag-item" style="background-color: #fce4ec; color: #c2185b; border: 1px solid #f8bbd0;" v-if="job.normalizedData?.isHeadhunter">猎头/代招</span> 
+              <span class="tag-item" style="background-color: #fce4ec; color: #c2185b; border: 1px solid #f8bbd0;" v-if="job.isHeadhunter || job.normalizedData?.isHeadhunter">
+                🤝 猎头代招<span v-if="job.clientCompanyName || job.normalizedData?.clientCompanyName"> ➔ 客户: {{ job.clientCompanyName || job.normalizedData?.clientCompanyName }}</span><span v-if="job.clientIndustry || job.normalizedData?.clientIndustry"> ({{ job.clientIndustry || job.normalizedData?.clientIndustry }})</span>
+              </span> 
+              <!-- 跨平台重复在招岗位标签 -->
+              <span class="tag-item" style="background-color: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd;" v-if="job.otherPlatforms && job.otherPlatforms.length > 0">🔗 跨平台同岗 ({{ job.otherPlatforms.join('/') }})</span>
             </div>
 
-            <!-- Meta Info -->
+            <!-- Meta Info & Lifecycle Timeline Tooltip -->
             <div class="job-meta">
-              <span v-if="job.normalizedData?.publishDate" class="meta-item">首发: {{ job.normalizedData.publishDate }}</span>
-              <span v-if="job.normalizedData?.updateDate" class="meta-item">修改: {{ job.normalizedData.updateDate }}</span>
-              <span class="meta-item">状态: {{ job.normalizedData?.jobStatus || job.status || '-' }}</span>
+              <el-tooltip placement="bottom" :show-after="150" effect="light">
+                <template #content>
+                  <div class="timeline-tooltip-content">
+                    <div class="timeline-tooltip-title">📅 职位时效与生命周期脉络</div>
+                    <div class="timeline-tooltip-list">
+                      <div v-for="(t, idx) in getTimeline(job)" :key="idx" class="timeline-tooltip-item">
+                        <span class="step-dot" :class="t.tagType"></span>
+                        <div class="step-content">
+                          <div class="step-header">
+                            <span class="step-label">{{ t.title }}</span>
+                            <span class="step-val">{{ t.date }} ({{ t.relative }})</span>
+                          </div>
+                          <div class="step-desc">{{ t.desc }}</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="timeline-tooltip-tip">💡 {{ getJobDiagnosis(job).advice }}</div>
+                  </div>
+                </template>
+                <div class="meta-time-trigger">
+                  <span class="meta-item meta-time-highlight">
+                    🕒 首发: {{ formatDisplayDate(getPublishDate(job)) || '未知' }}
+                  </span>
+                  <span class="meta-item meta-time-highlight" v-if="getUpdateDate(job)">
+                    · 刷新: {{ formatTimeAgo(getUpdateDate(job)) }}
+                  </span>
+                  <span class="meta-timeline-hint">🔍 时效脉络</span>
+                </div>
+              </el-tooltip>
+              <span class="meta-item meta-job-status">状态: {{ job.normalizedData?.jobStatus || job.status || '-' }}</span>
             </div>
 
             <div class="dashed-divider"></div>
@@ -190,7 +283,7 @@
               <div class="footer-left">
                 <el-button round size="small" :color="job.isFavorited ? '#ea580c' : '#f1f5f9'" :style="{ color: job.isFavorited ? '#fff' : '#64748b', border: job.isFavorited ? 'none' : '1px solid #cbd5e1' }" @click.stop="toggleFavorite(job)">{{ job.isFavorited ? '⭐ 已收藏' : '☆ 收藏' }}</el-button>
                 <el-button round size="small" color="#e74c3c" style="color: #fff;" @click.stop="openUnsuitableModal(job)">👎 不合适</el-button>
-                <el-button round size="small" color="#95a5a6" style="color: #fff;" @click.stop>{{ job.isBlacklisted ? '⛔ 已拉黑' : '⛔ 拉黑' }}</el-button>
+                <el-button round size="small" :color="job.isBlacklisted ? '#e11d48' : '#95a5a6'" style="color: #fff;" @click.stop="toggleBlacklist(job)">{{ job.isBlacklisted ? '⛔ 已拉黑' : '⛔ 拉黑' }}</el-button>
                 <el-button round size="small" color="#e74c3c" style="color: #fff;" @click.stop="handleDeleteJob(job)">删除</el-button>
               </div>
               <div class="footer-right">
@@ -286,10 +379,19 @@
 </template>
 
 <script setup>
-import { shallowRef, ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { shallowRef, ref, computed, onMounted, onUnmounted, watch, inject } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { JobStatus } from '~/utils/enums'
-import { Star, Eye, Ban, ThumbsDown, Trash2, Calendar, Bot, ExternalLink, Loader2, Copy } from 'lucide-vue-next'
+import { Star, Eye, Ban, ThumbsDown, Trash2, Calendar, Bot, ExternalLink, Loader2, Copy, UserCheck, Sparkles } from 'lucide-vue-next'
+import { 
+  getJobTimeDiagnosis, 
+  getJobTimeline, 
+  formatDisplayDate, 
+  formatTimeAgo, 
+  getJobPublishDate, 
+  getJobUpdateDate 
+} from '~/utils/jobTimeUtils'
 
 const jobList = shallowRef([])
 const loading = ref(false)
@@ -298,6 +400,41 @@ const batchAnalyzing = ref(false)
 const batchCancelled = ref(false)
 const batchOpening = ref(false)
 const batchOpenCancelled = ref(false)
+
+const route = useRoute()
+const openCopilot = inject('openCopilot', null)
+
+const handleAgentInspection = () => {
+  if (openCopilot) {
+    openCopilot('请启动一次本地职位的智能巡检，过滤掉黑名单和僵尸岗，推荐当前最匹配的前 5 个职位。')
+  } else {
+    ElMessage.info('智能管家就绪中...')
+  }
+}
+
+watch(
+  () => route.query.openJobId,
+  async (newJobId) => {
+    if (!newJobId) return
+    try {
+      const res = await $fetch(`/api/jobs/${newJobId}`)
+      if (res?.success && res?.data && jobDetailDrawerRef.value) {
+        jobDetailDrawerRef.value.open(res.data)
+      } else {
+        const found = jobList.value.find(j => j.id === newJobId)
+        if (found && jobDetailDrawerRef.value) {
+          jobDetailDrawerRef.value.open(found)
+        }
+      }
+    } catch {
+      const found = jobList.value.find(j => j.id === newJobId)
+      if (found && jobDetailDrawerRef.value) {
+        jobDetailDrawerRef.value.open(found)
+      }
+    }
+  },
+  { immediate: true }
+)
 
 // 批量选择与操作状态
 const selectedJobIds = ref([])
@@ -345,17 +482,27 @@ const filterFavoritesOnly = ref(false)
 const filterShowHidden = ref(false)
 const filterShowBlacklisted = ref(false)
 const filterMissingBossDetail = ref(false)
+const headhunterFilter = ref('all')
 
 const platformFilter = ref('all')
+const cityFilter = ref('all')
 const educationFilter = ref('all')
 const keywordFilter = ref('')
 const aiDiagnosisFilter = ref('all')
 const salaryFilter = ref('all')
+const lifecycleFilter = ref('all')
+const sortBy = ref('updatedAt')
 
 const jobDetailDrawerRef = ref(null)
 
 const loadMoreTrigger = ref(null)
 let observer = null
+
+// 统一由 utils/jobTimeUtils 提供的专业时效与生命周期诊断
+const getJobDiagnosis = (job) => getJobTimeDiagnosis(job)
+const getTimeline = (job) => getJobTimeline(job)
+const getPublishDate = (job) => getJobPublishDate(job)
+const getUpdateDate = (job) => getJobUpdateDate(job)
 
 const fetchJobs = async (isLoadMore = false) => {
   if (!isLoadMore) {
@@ -376,16 +523,22 @@ const fetchJobs = async (isLoadMore = false) => {
       filterShowHidden: filterShowHidden.value,
       filterShowBlacklisted: filterShowBlacklisted.value,
       filterMissingBossDetail: filterMissingBossDetail.value,
+      headhunterFilter: headhunterFilter.value,
       platform: platformFilter.value,
+      city: cityFilter.value,
       education: educationFilter.value,
       keyword: keywordFilter.value,
       aiDiagnosisFilter: aiDiagnosisFilter.value,
       salaryFilter: salaryFilter.value,
+      lifecycleFilter: lifecycleFilter.value,
+      sortBy: sortBy.value,
     })
     const res = await $fetch(`/api/jobs?${params.toString()}`)
     if (res && res.success && Array.isArray(res.data)) {
       if (isLoadMore) {
-        jobList.value = [...jobList.value, ...res.data]
+        const existingIds = new Set(jobList.value.map(j => j.id || j.jobId))
+        const newItems = res.data.filter(j => !existingIds.has(j.id || j.jobId))
+        jobList.value = [...jobList.value, ...newItems]
       } else {
         jobList.value = res.data
       }
@@ -403,10 +556,31 @@ const fetchJobs = async (isLoadMore = false) => {
   }
 }
 
+// 统一的并发安全翻页调度器，允许多个批处理任务或滚动监听共享同一次翻页请求，杜绝跳页和竞态
+let nextPagePromise = null
+const loadNextPage = async () => {
+  if (!hasMore.value) return false
+  if (nextPagePromise) {
+    return await nextPagePromise
+  }
+  nextPagePromise = (async () => {
+    try {
+      page.value++
+      await fetchJobs(true)
+      return hasMore.value
+    } catch (e) {
+      console.error('加载下一页失败', e)
+      return false
+    } finally {
+      nextPagePromise = null
+    }
+  })()
+  return await nextPagePromise
+}
+
 const loadMore = () => {
   if (loading.value || !hasMore.value) return
-  page.value++
-  fetchJobs(true)
+  loadNextPage()
 }
 
 const viewDetails = (row) => {
@@ -449,15 +623,105 @@ const handleDeleteJob = async (job) => {
 const handleBatchAiDiagnosis = async () => {
   if (batchAnalyzing.value) return
   
+  // 1. 检查是否处于“勾选特定职位”模式
+  const isSelectedMode = selectedJobIds.value.length > 0
+  
+  if (isSelectedMode) {
+    const selectedPendingJobs = jobList.value.filter(
+      job => selectedJobIds.value.includes(job.jobId) && 
+      (!job.aiResult || job.aiResult.score === null || job.aiResult.score === undefined)
+    )
+    
+    if (selectedPendingJobs.length === 0) {
+      ElMessage.info('所选职位均已完成诊断！')
+      return
+    }
+
+    try {
+      await ElMessageBox.confirm(
+        `准备开始批量诊断选中的 ${selectedPendingJobs.length} 个未诊断职位。支持并发处理（并发数: 5）。是否开始？`,
+        '批量 AI 诊断（选定职位）',
+        {
+          confirmButtonText: '开始诊断',
+          cancelButtonText: '取消',
+          type: 'info',
+        }
+      )
+    } catch {
+      return
+    }
+
+    batchAnalyzing.value = true
+    batchCancelled.value = false
+    let successCount = 0
+    let failCount = 0
+    const maxConcurrent = 5
+    const failedJobIds = new Set()
+
+    const processJob = async (job) => {
+      if (batchCancelled.value) return
+      analyzingIds.value.push(job.jobId)
+      try {
+        const res = await $fetch('/api/jobs/analyze', {
+          method: 'POST',
+          body: { jobId: job.jobId }
+        })
+        if (res && res.success && res.data) {
+          job.aiResult = res.data
+          successCount++
+        } else {
+          failedJobIds.add(job.jobId)
+          failCount++
+        }
+      } catch (e) {
+        console.error(e)
+        failedJobIds.add(job.jobId)
+        failCount++
+      } finally {
+        const index = analyzingIds.value.indexOf(job.jobId)
+        if (index > -1) analyzingIds.value.splice(index, 1)
+      }
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+
+    let activePromises = []
+    const queue = [...selectedPendingJobs]
+
+    while (!batchCancelled.value && (queue.length > 0 || activePromises.length > 0)) {
+      while (activePromises.length < maxConcurrent && queue.length > 0) {
+        const job = queue.shift()
+        const p = processJob(job).finally(() => {
+          activePromises = activePromises.filter(item => item !== p)
+        })
+        activePromises.push(p)
+      }
+      if (activePromises.length > 0) {
+        await Promise.race(activePromises)
+      }
+    }
+
+    batchAnalyzing.value = false
+    selectedJobIds.value = []
+    if (batchCancelled.value) {
+      ElMessage.info(`批量诊断已取消。本次成功: ${successCount}，失败: ${failCount}。`)
+    } else if (failCount === 0) {
+      ElMessage.success(`选中的 ${successCount} 个职位已全部诊断完成！`)
+    } else {
+      ElMessage.warning(`选中职位诊断结束。成功: ${successCount}，失败: ${failCount}。`)
+    }
+    return
+  }
+
+  // 2. 全列表持续批量诊断模式（当前筛选视图下）
   const pendingJobs = jobList.value.filter(job => !job.aiResult || job.aiResult.score === null || job.aiResult.score === undefined)
   if (pendingJobs.length === 0 && !hasMore.value) {
-    ElMessage.info('所有职位都已诊断完毕！')
+    ElMessage.info('当前筛选视图下的所有职位都已诊断完毕！')
     return
   }
 
   try {
     await ElMessageBox.confirm(
-      `准备开始持续批量诊断。程序会自动向下翻页并诊断所有未处理的职位。支持并发处理（并发数: 5）。是否开始？（随时可点击右上角取消）`,
+      `准备开始持续批量诊断当前筛选视图下的所有未诊断职位。程序会自动向后拉取未诊断数据并并发处理（并发数: 5）。是否开始？（随时可点击右上角取消）`,
       '持续批量 AI 诊断',
       {
         confirmButtonText: '开始诊断',
@@ -474,6 +738,7 @@ const handleBatchAiDiagnosis = async () => {
   let successCount = 0
   let failCount = 0
   const maxConcurrent = 5
+  const failedJobIds = new Set()
 
   // 并发任务调度函数
   const processJob = async (job) => {
@@ -488,10 +753,12 @@ const handleBatchAiDiagnosis = async () => {
         job.aiResult = res.data
         successCount++
       } else {
+        failedJobIds.add(job.jobId)
         failCount++
       }
     } catch (e) {
       console.error(e)
+      failedJobIds.add(job.jobId)
       failCount++
     } finally {
       const index = analyzingIds.value.indexOf(job.jobId)
@@ -501,13 +768,64 @@ const handleBatchAiDiagnosis = async () => {
     await new Promise(resolve => setTimeout(resolve, 500))
   }
 
+  // 辅助函数：安全拉取下一批待诊断数据（解决未诊断筛选下的分页偏移与跳页早退缺陷）
+  const fetchNextPendingBatch = async () => {
+    try {
+      if (aiDiagnosisFilter.value === 'undiagnosed') {
+        // 当处于“未诊断”筛选下时，由于刚刚诊断成功的职位在数据库中已成为“已诊断”，
+        // 服务端的未诊断队列会自动向前位移。因此下一批未诊断职位始终位于 page = 1。
+        // 若递增 page，会导致跳过前页职位并因 (page*pageSize) >= total 提前早退！
+        const params = new URLSearchParams({
+          page: '1',
+          pageSize: String(pageSize.value),
+          status: statusFilter.value,
+          filterFavoritesOnly: String(filterFavoritesOnly.value),
+          filterShowHidden: String(filterShowHidden.value),
+          filterShowBlacklisted: String(filterShowBlacklisted.value),
+          filterMissingBossDetail: String(filterMissingBossDetail.value),
+          headhunterFilter: headhunterFilter.value,
+          platform: platformFilter.value,
+          city: cityFilter.value,
+          education: educationFilter.value,
+          keyword: keywordFilter.value,
+          aiDiagnosisFilter: 'undiagnosed',
+          salaryFilter: salaryFilter.value,
+          lifecycleFilter: lifecycleFilter.value,
+          sortBy: sortBy.value,
+        })
+        const res = await $fetch(`/api/jobs?${params.toString()}`)
+        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const existingIds = new Set(jobList.value.map(j => j.id || j.jobId))
+          const newItems = res.data.filter(j => !existingIds.has(j.id || j.jobId))
+          if (newItems.length > 0) {
+            jobList.value = [...jobList.value, ...newItems]
+            total.value = res.total || 0
+            hasMore.value = res.total > 0
+            return true
+          }
+        }
+        hasMore.value = false
+        return false
+      } else {
+        // 常规全量视图下，已诊断和未诊断混排，正常通过 loadNextPage 向后翻页加载新职位
+        if (!hasMore.value) return false
+        const hasMoreData = await loadNextPage()
+        return !!hasMoreData
+      }
+    } catch (e) {
+      console.error('拉取下一批待诊断职位失败', e)
+      return false
+    }
+  }
+
   let activePromises = []
   
   while (!batchCancelled.value) {
-    // 找出尚未有结果，并且当前不在分析队列中的任务
+    // 找出尚未有结果，并且当前不在分析队列、未标记失败的任务
     const jobsToAnalyze = jobList.value.filter(job => 
       (!job.aiResult || job.aiResult.score === null || job.aiResult.score === undefined) && 
-      !analyzingIds.value.includes(job.jobId)
+      !analyzingIds.value.includes(job.jobId) &&
+      !failedJobIds.has(job.jobId)
     )
     
     if (jobsToAnalyze.length > 0) {
@@ -526,22 +844,15 @@ const handleBatchAiDiagnosis = async () => {
       }
     } else {
       if (activePromises.length > 0) {
-        // 当前页无剩余待分配任务，等待已有任务全部完成
+        // 当前页无剩余待分配任务，等待已有并发任务全部完成
         await Promise.all(activePromises)
       } else {
-        // 当前页全部完成，请求下一页
-        if (hasMore.value) {
-          try {
-            page.value++
-            await fetchJobs(true)
-            await new Promise(resolve => setTimeout(resolve, 500))
-          } catch (e) {
-            console.error('加载下一页失败', e)
-            break
-          }
-        } else {
+        // 当前加载列表全部诊断完成，尝试拉取下一批
+        const hasMoreData = await fetchNextPendingBatch()
+        if (!hasMoreData) {
           break
         }
+        await new Promise(resolve => setTimeout(resolve, 500))
       }
     }
   }
@@ -550,7 +861,7 @@ const handleBatchAiDiagnosis = async () => {
   if (batchCancelled.value) {
     ElMessage.info(`批量诊断已取消。本次成功: ${successCount}，失败: ${failCount}。`)
   } else if (failCount === 0) {
-    ElMessage.success(`批量诊断全部完成！成功诊断 ${successCount} 个职位。`)
+    ElMessage.success(`批量诊断全部完成！当前视图下成功诊断 ${successCount} 个职位。`)
   } else {
     ElMessage.warning(`批量诊断结束。成功: ${successCount}，失败: ${failCount}。`)
   }
@@ -563,16 +874,22 @@ const cancelBatchAiDiagnosis = () => {
 }
 
 const handleBatchOpenUrls = async () => {
-  if (batchOpening.value || batchAnalyzing.value) return
+  if (batchOpening.value) return
   
   if (jobList.value.length === 0 && !hasMore.value) {
     ElMessage.info('没有职位可打开！')
     return
   }
 
+  // 1. 如果有复选框勾选的职位，优先打开选中的职位
+  const hasSelection = selectedJobIds.value.length > 0
+  const confirmMsg = hasSelection
+    ? `准备批量打开已勾选的 ${selectedJobIds.value.length} 个职位原网页。程序会以随机间隔（约 1.5 ~ 3.5 秒）依次打开网页，各标签页在加载后保留随机时间（约 2 ~ 4.5 秒）自动关闭。是否开始？（随时可取消）`
+    : `准备开始批量打开原网页。程序会自动向下翻页并打开网页，每次打开间隔随机（约 1.5 ~ 3.5 秒），标签页会在加载后保留随机时间（约 2 ~ 4.5 秒）自动关闭。是否开始？（随时可点击右上角取消）`
+
   try {
     await ElMessageBox.confirm(
-      `准备开始批量打开原网页。程序会自动向下翻页并打开网页，每次打开间隔 2 秒，标签页会在加载后保留 5 秒自动关闭。是否开始？（随时可点击右上角取消）`,
+      confirmMsg,
       '批量打开原网页',
       {
         confirmButtonText: '开始打开',
@@ -589,7 +906,11 @@ const handleBatchOpenUrls = async () => {
   let openCount = 0
 
   while (!batchOpenCancelled.value) {
-    const jobsToOpen = jobList.value.filter(job => !job._hasOpened)
+    const jobsToOpen = jobList.value.filter(job => {
+      if (job._hasOpened) return false
+      if (hasSelection) return selectedJobIds.value.includes(job.id || job.jobId)
+      return true
+    })
     
     if (jobsToOpen.length > 0) {
       const job = jobsToOpen[0]
@@ -605,41 +926,32 @@ const handleBatchOpenUrls = async () => {
       const originalUrl = job.normalizedData?.jobUrl || job.jobUrl
       if (originalUrl) {
         const separator = originalUrl.includes('?') ? '&' : '?'
-        const autoCloseUrl = originalUrl + separator + 'auto_close=1'
+        // 随机关闭时间：2000ms ~ 4500ms（2 ~ 4.5 秒，时间不要太久）
+        const closeDelay = Math.floor(Math.random() * (4500 - 2000 + 1)) + 2000
+        const autoCloseUrl = `${originalUrl}${separator}auto_close=1&close_delay=${closeDelay}`
         
-      // 发送消息给浏览器扩展，由扩展真正在后台静默打开新标签页
-      window.postMessage({ 
-        action: 'OPEN_BACKGROUND_TAB', 
-        url: autoCloseUrl 
-      }, '*')
-    }
-    
-    if (openCount % 20 === 0) {
-      const pauseSeconds = Math.floor(Math.random() * (5 * 60 - 3 * 60 + 1)) + 3 * 60;
-      ElMessage.warning(`已连续打开 20 个网页，防反爬暂停 ${Math.floor(pauseSeconds / 60)}分${pauseSeconds % 60}秒...`);
-      
-      for (let i = 0; i < pauseSeconds; i++) {
-        if (batchOpenCancelled.value) break;
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // 发送消息给浏览器扩展，由扩展真正在后台静默打开新标签页
+        window.postMessage({ 
+          action: 'OPEN_BACKGROUND_TAB', 
+          url: autoCloseUrl,
+          closeDelay
+        }, '*')
       }
       
-      if (!batchOpenCancelled.value) {
-        ElMessage.success(`暂停结束，继续打开...`);
+      // 等待随机间隔后再打开下一个：1500ms ~ 3500ms（1.5 ~ 3.5 秒，时间不要太久且有随机抖动）
+      const openInterval = Math.floor(Math.random() * (3500 - 1500 + 1)) + 1500
+      await new Promise(resolve => setTimeout(resolve, openInterval))
+    } else {
+      if (hasSelection) {
+        break
       }
-    } else {
-      // 等待 2 秒后再打开下一个
-      await new Promise(resolve => setTimeout(resolve, 2000))
-    }
-    } else {
       if (hasMore.value) {
         try {
-          // 自动加载数据：滚动到底部的触发器，依赖 IntersectionObserver 自动加载
-          if (loadMoreTrigger.value) {
-            loadMoreTrigger.value.scrollIntoView({ behavior: 'smooth', block: 'end' })
+          const hasMoreData = await loadNextPage()
+          if (!hasMoreData && !hasMore.value) {
+            break
           }
-          page.value++
-          await fetchJobs(true)
-          await new Promise(resolve => setTimeout(resolve, 1000))
+          await new Promise(resolve => setTimeout(resolve, 500))
         } catch (e) {
           console.error('加载下一页失败', e)
           break
@@ -668,7 +980,11 @@ const copyJobInfo = async (job) => {
   if (!job) return
   try {
     const jobName = job.title || ''
-    const companyName = job.normalizedData?.clientCompanyName || job.normalizedData?.brandName || job.companyName || ''
+    const fullName = job.companyFullName || job.normalizedData?.companyFullName || ''
+    const brandName = job.companyName || job.normalizedData?.brandName || ''
+    const companyBase = fullName && brandName && fullName !== brandName ? `${fullName} (${brandName})` : (fullName || brandName || '')
+    const clientCompany = job.clientCompanyName || job.normalizedData?.clientCompanyName || ''
+    const companyDisplay = clientCompany ? `${companyBase} (代招客户：${clientCompany})` : companyBase
     const experience = job.normalizedData?.experience || '不限'
     const degree = job.normalizedData?.degree || '不限'
     
@@ -680,7 +996,7 @@ const copyJobInfo = async (job) => {
       .replace(/\n{3,}/g, '\n\n')
       .trim()
       
-    const textToCopy = `职位名称：${jobName}\n所属公司：${companyName}\n经验：${experience}\n学历：${degree}\n\n岗位职责与要求：\n${desc}`
+    const textToCopy = `职位名称：${jobName}\n所属公司：${companyDisplay}\n经验：${experience}\n学历：${degree}\n\n岗位职责与要求：\n${desc}`
     
     await navigator.clipboard.writeText(textToCopy)
     ElMessage.success('职位信息已复制到剪贴板！')
@@ -707,6 +1023,64 @@ const toggleFavorite = async (job) => {
   } catch (error) {
     console.error('Toggle favorite error:', error)
     ElMessage.error('收藏操作出现异常')
+  }
+}
+
+const toggleBlacklist = async (job) => {
+  const fullName = job.companyFullName || job.normalizedData?.companyFullName || ''
+  const brandName = job.companyName || job.normalizedData?.brandName || ''
+  const comp = fullName || brandName
+  if (!comp) {
+    ElMessage.warning('未获取到该职位的公司名称')
+    return
+  }
+
+  const isCurrentlyBlacklisted = job.isBlacklisted
+  try {
+    if (isCurrentlyBlacklisted) {
+      const res = await $fetch(`/api/blacklist?companyName=${encodeURIComponent(comp)}`, {
+        method: 'DELETE'
+      })
+      if (res && res.success) {
+        ElMessage.success(`已将【${comp}】移出黑名单`)
+        const matchNames = new Set([brandName, fullName, comp].filter(Boolean))
+        jobList.value.forEach(j => {
+          const jNames = [j.companyName, j.companyFullName, j.normalizedData?.companyFullName, j.normalizedData?.brandName].filter(Boolean)
+          if (jNames.some(n => matchNames.has(n))) {
+            j.isBlacklisted = false
+          }
+        })
+        jobList.value = [...jobList.value]
+      } else {
+        ElMessage.error(res?.error || '操作失败')
+      }
+    } else {
+      const reason = brandName && brandName !== comp ? `用户手动拉黑 (品牌: ${brandName})` : '用户手动拉黑'
+      const res = await $fetch('/api/blacklist', {
+        method: 'POST',
+        body: {
+          companyName: comp,
+          reason,
+          source: 'manual'
+        }
+      })
+      if (res && res.success) {
+        ElMessage.success(`已将【${comp}】加入企业黑名单`)
+        const matchNames = new Set([brandName, fullName, comp].filter(Boolean))
+        jobList.value.forEach(j => {
+          const jNames = [j.companyName, j.companyFullName, j.normalizedData?.companyFullName, j.normalizedData?.brandName].filter(Boolean)
+          if (jNames.some(n => matchNames.has(n))) {
+            j.isBlacklisted = true
+          }
+        })
+        jobList.value = [...jobList.value]
+      } else {
+        ElMessage.error(res?.error || '拉黑失败')
+      }
+    }
+  } catch (error) {
+    console.error('Toggle blacklist error:', error)
+    ElMessage.error('拉黑操作出现异常: ' + error.message)
   }
 }
 
@@ -996,6 +1370,8 @@ onUnmounted(() => {
   if (observer) {
     observer.disconnect()
   }
+  batchCancelled.value = true
+  batchOpenCancelled.value = true
 })
 </script>
 
@@ -1163,29 +1539,167 @@ onUnmounted(() => {
 .company-link:hover {
   text-decoration: underline;
 }
+.company-brand-sub {
+  font-size: 13px;
+  font-weight: 500;
+  color: #409eff;
+  margin-left: 4px;
+}
 
 .job-tags {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
   margin-bottom: 16px;
 }
 .tag-item {
+  display: inline-flex;
+  align-items: center;
   background: #F2F2F7;
   color: #636366;
   padding: 5px 10px;
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
+  border: 1px solid transparent;
+  box-sizing: border-box;
+  line-height: 1.2;
+}
+
+.tag-item.job-lifecycle-badge {
+  font-weight: 600;
+  border-width: 1px;
+  border-style: solid;
+  cursor: help;
+  transition: all 0.2s ease;
+}
+.tag-item.job-lifecycle-badge:hover {
+  filter: brightness(0.95);
+  transform: translateY(-1px);
 }
 
 .job-meta {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 12px;
   font-size: 12px;
   color: var(--text-secondary, #86868B);
   margin-bottom: 12px;
+}
+
+.meta-time-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f8fafc;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.meta-time-trigger:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.meta-time-highlight {
+  font-weight: 600;
+  color: #334155;
+}
+
+.meta-timeline-hint {
+  font-size: 11px;
+  color: #2563eb;
+  background: #dbeafe;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.meta-job-status {
+  color: #64748b;
+}
+
+/* Timeline Tooltip Styling */
+.timeline-tooltip-content {
+  max-width: 320px;
+  padding: 6px 2px;
+}
+
+.timeline-tooltip-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #0f172a;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 4px;
+}
+
+.timeline-tooltip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.timeline-tooltip-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.step-dot.success { background-color: #16a34a; }
+.step-dot.primary { background-color: #0284c7; }
+.step-dot.warning { background-color: #ea580c; }
+.step-dot.info { background-color: #64748b; }
+
+.step-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.step-header {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+}
+
+.step-label {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.step-val {
+  color: #475569;
+}
+
+.step-desc {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.timeline-tooltip-tip {
+  font-size: 11px;
+  color: #0369a1;
+  background: #f0f9ff;
+  padding: 6px 8px;
+  border-radius: 6px;
+  line-height: 1.4;
+  border: 1px solid #bae6fd;
 }
 
 .dashed-divider {

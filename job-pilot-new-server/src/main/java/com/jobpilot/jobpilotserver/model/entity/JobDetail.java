@@ -8,7 +8,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.time.LocalDateTime;
 
-@TableName("JobDetail")
+@TableName("job_details")
 @Data
 public class JobDetail {
     @TableId(type = IdType.ASSIGN_UUID)

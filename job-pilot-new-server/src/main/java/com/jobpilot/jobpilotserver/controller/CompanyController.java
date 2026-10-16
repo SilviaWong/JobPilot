@@ -30,8 +30,12 @@ public class CompanyController {
             @RequestParam(required = false, defaultValue = "direct") String agencyFilter,
             @RequestParam(required = false, defaultValue = "all") String platformFilter,
             @RequestParam(required = false, defaultValue = "all") String city,
-            @RequestParam(required = false) String cityFilter) {
+            @RequestParam(required = false) String cityFilter,
+            @RequestParam(required = false, defaultValue = "false") boolean refresh) {
 
+        if (refresh) {
+            companyService.invalidatePanoramaCache();
+        }
         String effectiveCity = (cityFilter != null && !cityFilter.isEmpty() && !"all".equalsIgnoreCase(cityFilter)) ? cityFilter : city;
         Map<String, Object> res = companyService.getCompanies(page, pageSize, query, status, agencyFilter, platformFilter, effectiveCity);
         List<Object> data = (List<Object>) res.get("data");

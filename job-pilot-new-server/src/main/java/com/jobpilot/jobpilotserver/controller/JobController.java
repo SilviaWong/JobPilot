@@ -49,6 +49,15 @@ public class JobController {
         return Result.success(data, total, hasMore);
     }
 
+    @GetMapping("/{id}")
+    public Result<Job> getJobById(@PathVariable String id) {
+        Job job = jobService.getById(id);
+        if (job == null) {
+            job = jobService.getOne(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Job>().eq(Job::getJobId, id));
+        }
+        return Result.success(job);
+    }
+
     @PutMapping("/{id}/status")
     public Result<Job> updateStatus(@PathVariable String id, @RequestBody JobStatusUpdateRequest request) {
         String status = request != null ? request.getStatus() : null;

@@ -43,4 +43,15 @@ public class CacheConfig {
                 .maximumSize(10)
                 .build();
     }
+
+    /**
+     * 企业全景聚合列表本地缓存 (基于 status 缓存全局预聚合列表，写入后15分钟过期，主动变更时失效)
+     */
+    @Bean("companyPanoramaCache")
+    public Cache<String, java.util.List<java.util.Map<String, Object>>> companyPanoramaCache() {
+        return Caffeine.newBuilder()
+                .expireAfterWrite(15, TimeUnit.MINUTES)
+                .maximumSize(20)
+                .build();
+    }
 }

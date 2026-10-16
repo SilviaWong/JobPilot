@@ -26,6 +26,7 @@ spring:
       max-request-size: 100MB
 
 mybatis-plus:
+  type-handlers-package: com.jobpilot.jobpilotserver.common.config
   configuration:
     map-underscore-to-camel-case: false
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl

@@ -3,8 +3,10 @@ package com.jobpilot.jobpilotserver.model.entity;
 import lombok.Data;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.jobpilot.jobpilotserver.common.config.SqliteLocalDateTimeTypeHandler;
 
 import java.time.LocalDateTime;
 
@@ -20,7 +22,11 @@ public class StandardQuestion {
     private String answerKey;
     private String aiAnswer;
     private String tags;
+
+    @TableField(typeHandler = SqliteLocalDateTimeTypeHandler.class)
     private LocalDateTime createdAt;
+
+    @TableField(typeHandler = SqliteLocalDateTimeTypeHandler.class)
     private LocalDateTime updatedAt;
 
     public String getId() { return id; }
