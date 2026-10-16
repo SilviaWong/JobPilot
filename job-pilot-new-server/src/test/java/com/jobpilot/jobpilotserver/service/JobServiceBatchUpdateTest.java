@@ -22,6 +22,8 @@ public class JobServiceBatchUpdateTest {
     @Test
     @DisplayName("测试 JobService batchUpdate 使用单条批量 Update 执行")
     public void testBatchUpdateSingleSql() {
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
+                new org.apache.ibatis.builder.MapperBuilderAssistant(new com.baomidou.mybatisplus.core.MybatisConfiguration(), ""), Job.class);
         AtomicInteger updateCount = new AtomicInteger(0);
         AtomicReference<LambdaUpdateWrapper<Job>> capturedWrapper = new AtomicReference<>();
 

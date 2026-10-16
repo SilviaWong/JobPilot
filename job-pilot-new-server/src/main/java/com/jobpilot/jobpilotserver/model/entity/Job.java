@@ -35,17 +35,23 @@ public class Job {
     private String education;
     /** 工作经验要求 */
     private String experience;
+    /** 最低经验年限 */
+    private Integer expMinYears;
+    /** 最高经验年限 */
+    private Integer expMaxYears;
+    /** 省份 */
+    private String province;
     /** 城市 */
     private String city;
     /** 行政区 */
     private String area;
     /** 商圈/片区 */
     private String businessDistrict;
+    /** 详细地址 */
+    private String address;
     /** 职位原始链接 */
-    @TableField(exist = false)
     private String jobUrl;
     /** 职位描述 (JD) */
-    @TableField(exist = false)
     private String jobDesc;
     /** 技能标签列表 (JSON 数组字符串) */
     private String skills;
@@ -65,6 +71,12 @@ public class Job {
     private Boolean isHeadhunter;
     /** 猎头代招时实际用人企业名称 */
     private String clientCompanyName;
+    /** 猎头代招客户所属行业 */
+    private String clientIndustry;
+    /** 猎头代招客户人员规模 */
+    private String clientScale;
+    /** 猎头代招客户融资阶段 */
+    private String clientStage;
     /** 来源平台 */
     private String platform;
     /** 职位状态 */
