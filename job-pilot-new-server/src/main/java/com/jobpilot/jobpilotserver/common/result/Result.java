@@ -10,6 +10,8 @@ public class Result<T> {
     private Long total;
     private Boolean hasMore;
     private Object stats;
+    private Object meta;
+    private Integer count;
 
     public Boolean getSuccess() { return success; }
     public void setSuccess(Boolean success) { this.success = success; }
@@ -25,6 +27,10 @@ public class Result<T> {
     public void setHasMore(Boolean hasMore) { this.hasMore = hasMore; }
     public Object getStats() { return stats; }
     public void setStats(Object stats) { this.stats = stats; }
+    public Object getMeta() { return meta; }
+    public void setMeta(Object meta) { this.meta = meta; }
+    public Integer getCount() { return count; }
+    public void setCount(Integer count) { this.count = count; }
 
     public static <T> Result<T> success(T data) {
         Result<T> r = new Result<>();
@@ -47,6 +53,16 @@ public class Result<T> {
         r.setData(data);
         r.setTotal(total);
         r.setHasMore(hasMore);
+        return r;
+    }
+
+    public static <T> Result<T> success(T data, Long total, Boolean hasMore, Object meta) {
+        Result<T> r = new Result<>();
+        r.setSuccess(true);
+        r.setData(data);
+        r.setTotal(total);
+        r.setHasMore(hasMore);
+        r.setMeta(meta);
         return r;
     }
 

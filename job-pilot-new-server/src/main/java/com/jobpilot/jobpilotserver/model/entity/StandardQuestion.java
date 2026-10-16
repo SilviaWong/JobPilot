@@ -23,6 +23,9 @@ public class StandardQuestion {
     private String aiAnswer;
     private String tags;
 
+    @TableField(exist = false)
+    private java.util.List<QuestionVariant> variants;
+
     @TableField(typeHandler = SqliteLocalDateTimeTypeHandler.class)
     private LocalDateTime createdAt;
 
@@ -45,6 +48,24 @@ public class StandardQuestion {
     public void setAiAnswer(String aiAnswer) { this.aiAnswer = aiAnswer; }
     public String getTags() { return tags; }
     public void setTags(String tags) { this.tags = tags; }
+
+    @com.fasterxml.jackson.annotation.JsonSetter("tags")
+    public void setTagsFromAny(Object tagsObj) {
+        if (tagsObj instanceof java.util.List) {
+            try {
+                this.tags = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(tagsObj);
+            } catch (Exception e) {
+                this.tags = tagsObj.toString();
+            }
+        } else if (tagsObj != null) {
+            this.tags = tagsObj.toString();
+        } else {
+            this.tags = null;
+        }
+    }
+
+    public java.util.List<QuestionVariant> getVariants() { return variants; }
+    public void setVariants(java.util.List<QuestionVariant> variants) { this.variants = variants; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

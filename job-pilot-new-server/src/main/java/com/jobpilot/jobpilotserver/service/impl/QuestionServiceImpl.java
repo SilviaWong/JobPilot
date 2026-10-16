@@ -37,6 +37,7 @@ public class QuestionServiceImpl extends ServiceImpl<StandardQuestionMapper, Sta
     private static final Logger log = LoggerFactory.getLogger(QuestionServiceImpl.class);
 
     private final StandardQuestionMapper questionMapper;
+    private final com.jobpilot.jobpilotserver.mapper.QuestionVariantMapper questionVariantMapper;
     private final AiSettingsService aiSettingsService;
     private final ResumeService resumeService;
     private final LlmClient llmClient;
@@ -44,11 +45,13 @@ public class QuestionServiceImpl extends ServiceImpl<StandardQuestionMapper, Sta
 
     @org.springframework.beans.factory.annotation.Autowired
     public QuestionServiceImpl(StandardQuestionMapper questionMapper,
+                               com.jobpilot.jobpilotserver.mapper.QuestionVariantMapper questionVariantMapper,
                                AiSettingsService aiSettingsService,
                                ResumeService resumeService,
                                LlmClient llmClient,
                                @Qualifier("aiTaskExecutor") Executor aiTaskExecutor) {
         this.questionMapper = questionMapper;
+        this.questionVariantMapper = questionVariantMapper;
         this.aiSettingsService = aiSettingsService;
         this.resumeService = resumeService;
         this.llmClient = llmClient;
@@ -58,42 +61,118 @@ public class QuestionServiceImpl extends ServiceImpl<StandardQuestionMapper, Sta
     public QuestionServiceImpl(StandardQuestionMapper questionMapper,
                                AiSettingsService aiSettingsService,
                                LlmClient llmClient) {
-        this(questionMapper, aiSettingsService, null, llmClient, null);
+        this(questionMapper, null, aiSettingsService, null, llmClient, null);
+    }
+
+    @Override
+    public Map<String, Object> getQuestions(int page, int pageSize, String keyword, String domain) {
+        return getQuestions(page, pageSize, keyword, domain, "all", null, "hotness");
     }
 
     /**
-     * 分页多条件查询面试题库
+     * 分页多维度条件查询面试题库 (支持热度排序、梯队分层、真题变体检索及关联预查)
      *
      * @param page 页码
      * @param pageSize 每页条数
-     * @param keyword 搜索关键字（支持匹配题目、通用标签、分类标签）
-     * @param domain 专业领域分类（如：Java、前端、架构、算法等，"全部"表示不限）
-     * @return 包含 data (题目列表)、total (总数)、hasMore (是否有下一页) 的 Map
+     * @param keyword 搜索关键字（跨标题、核心考点、标签、以及面试变体真题）
+     * @param domain 专业领域分类（如：Java基础、Redis、并发编程等）
+     * @param tier 题库梯队（T1-必考、T2-进阶、T3-长尾、all）
+     * @param tag 单独标签
+     * @param sortBy 排序方式（hotness 考察频次 vs createdAt 最新发布）
+     * @return 包含 data (题目列表+变体)、total (总数)、hasMore、meta (梯队统计与领域分类)
      */
     @Override
-    public Map<String, Object> getQuestions(int page, int pageSize, String keyword, String domain) {
+    public Map<String, Object> getQuestions(int page, int pageSize, String keyword, String domain, String tier, String tag, String sortBy) {
         Page<StandardQuestion> pageParam = new Page<>(page, pageSize);
         QueryWrapper<StandardQuestion> wrapper = new QueryWrapper<>();
 
-        // 关键词模糊查询（跨标题和标签）
+        // 1. 深度关键词模糊检索（匹配标准题标题、核心考点、通用标签、分类标签，以及其关联的所有变体真题）
         if (keyword != null && !keyword.trim().isEmpty()) {
-            wrapper.and(w -> w.like("title", keyword).or().like("tags", keyword).or().like("categoryTags", keyword));
-        }
-        // 领域维度精准筛选
-        if (domain != null && !domain.trim().isEmpty() && !"全部".equals(domain)) {
-            wrapper.eq("domain", domain);
+            String kw = keyword.trim().replace("'", "''");
+            wrapper.and(w -> w.like("title", kw)
+                    .or().like("tags", kw)
+                    .or().like("corePoints", kw)
+                    .or().like("categoryTags", kw)
+                    .or().inSql("id", "SELECT standardQuestionId FROM QuestionVariant WHERE title LIKE '%" + kw + "%'"));
         }
 
-        // 按创建时间倒序排序
-        wrapper.orderByDesc("createdAt");
+        // 2. 技术领域维度筛选
+        if (domain != null && !domain.trim().isEmpty() && !"全部".equals(domain)) {
+            wrapper.eq("domain", domain.trim());
+        }
+
+        // 3. 梯队 (Tier) 与标签筛选
+        if (tier != null && !"all".equalsIgnoreCase(tier) && !tier.trim().isEmpty()) {
+            wrapper.like("tags", tier.trim());
+        } else if (tag != null && !tag.trim().isEmpty()) {
+            wrapper.like("tags", tag.trim());
+        }
+
+        // 4. 排序方式 (hotness 考察频次/变体真题数倒序 vs createdAt 最新发布倒序)
+        if ("createdAt".equalsIgnoreCase(sortBy)) {
+            wrapper.orderByDesc("createdAt");
+        } else {
+            // 默认 hotness: 按真实面试变体真题收集数量倒序排列
+            wrapper.last("ORDER BY (SELECT COUNT(1) FROM QuestionVariant WHERE standardQuestionId = StandardQuestion.id) DESC, createdAt DESC");
+        }
 
         Page<StandardQuestion> resultPage = questionMapper.selectPage(pageParam, wrapper);
+        List<StandardQuestion> records = resultPage.getRecords();
+
+        // 5. 批量预查当前页题目的变体真题列表 (QuestionVariant)，按序号升序排列
+        if (records != null && !records.isEmpty() && questionVariantMapper != null) {
+            List<String> questionIds = records.stream().map(StandardQuestion::getId).collect(java.util.stream.Collectors.toList());
+            com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jobpilot.jobpilotserver.model.entity.QuestionVariant> variantWrapper =
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
+            variantWrapper.in(com.jobpilot.jobpilotserver.model.entity.QuestionVariant::getStandardQuestionId, questionIds)
+                    .orderByAsc(com.jobpilot.jobpilotserver.model.entity.QuestionVariant::getSerialNo);
+            List<com.jobpilot.jobpilotserver.model.entity.QuestionVariant> allVariants = questionVariantMapper.selectList(variantWrapper);
+            Map<String, List<com.jobpilot.jobpilotserver.model.entity.QuestionVariant>> variantMap = allVariants.stream()
+                    .collect(java.util.stream.Collectors.groupingBy(com.jobpilot.jobpilotserver.model.entity.QuestionVariant::getStandardQuestionId));
+            for (StandardQuestion q : records) {
+                q.setVariants(variantMap.getOrDefault(q.getId(), java.util.Collections.emptyList()));
+            }
+        }
+
+        // 6. 动态汇总元数据 (用于前端选项卡统计与动态技术领域下拉选项)
+        Map<String, Object> meta = computeMetaStats();
 
         Map<String, Object> res = new HashMap<>();
-        res.put("data", resultPage.getRecords());
+        res.put("data", records);
         res.put("total", resultPage.getTotal());
-        res.put("hasMore", resultPage.getCurrent() < resultPage.getPages());
+        res.put("hasMore", (page * pageSize) < resultPage.getTotal());
+        res.put("meta", meta);
         return res;
+    }
+
+    /**
+     * 汇总题库元数据（各梯队数量统计与技术领域去重列表）
+     */
+    private Map<String, Object> computeMetaStats() {
+        long allCount = questionMapper.selectCount(null);
+        long t1Count = questionMapper.selectCount(new QueryWrapper<StandardQuestion>().like("tags", "T1-必考"));
+        long t2Count = questionMapper.selectCount(new QueryWrapper<StandardQuestion>().like("tags", "T2-进阶"));
+        long t3Count = questionMapper.selectCount(new QueryWrapper<StandardQuestion>().like("tags", "T3-长尾"));
+
+        QueryWrapper<StandardQuestion> domainQuery = new QueryWrapper<>();
+        domainQuery.select("DISTINCT domain").isNotNull("domain");
+        List<StandardQuestion> domainRecords = questionMapper.selectList(domainQuery);
+        List<String> domains = domainRecords.stream()
+                .map(StandardQuestion::getDomain)
+                .filter(d -> d != null && !d.trim().isEmpty())
+                .sorted(java.text.Collator.getInstance(java.util.Locale.CHINESE))
+                .collect(java.util.stream.Collectors.toList());
+
+        Map<String, Object> tierStats = new HashMap<>();
+        tierStats.put("all", allCount);
+        tierStats.put("t1", t1Count);
+        tierStats.put("t2", t2Count);
+        tierStats.put("t3", t3Count);
+
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("tierStats", tierStats);
+        meta.put("domains", domains);
+        return meta;
     }
 
     /**
@@ -126,13 +205,18 @@ public class QuestionServiceImpl extends ServiceImpl<StandardQuestionMapper, Sta
     }
 
     /**
-     * 删除指定面试题
+     * 删除指定面试题（级联删除其关联的所有变体真题）
      *
      * @param id 题目 ID
      * @return 是否删除成功
      */
     @Override
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
     public boolean deleteQuestion(String id) {
+        if (questionVariantMapper != null) {
+            questionVariantMapper.delete(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jobpilot.jobpilotserver.model.entity.QuestionVariant>()
+                    .eq(com.jobpilot.jobpilotserver.model.entity.QuestionVariant::getStandardQuestionId, id));
+        }
         int rows = questionMapper.deleteById(id);
         return rows > 0;
     }

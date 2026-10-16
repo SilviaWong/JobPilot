@@ -335,7 +335,8 @@ const batchAiAnswer = async () => {
     })
     
     if (res && res.success) {
-      ElMessage.success(`成功补充了 ${res.count} 个题目的解答`)
+      const count = res.count ?? res.data?.count ?? 0
+      ElMessage.success(`成功补充了 ${count} 个题目的解答`)
       fetchQuestions()
     } else {
       ElMessage.error(res?.error || '批量生成失败')

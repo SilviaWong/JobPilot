@@ -18,3 +18,12 @@ Thumbs.db
 **/.nuxt/
 **/dist/
 **/node_modules/
+
+# Local Database & Data
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.bak*
+*.db
+*.db-shm
+*.db-wal
