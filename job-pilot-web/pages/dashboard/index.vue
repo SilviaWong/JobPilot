@@ -11,11 +11,14 @@
         </p>
       </div>
 
-      <div class="header-controls">
+      <div class="header-controls" style="display: flex; align-items: center; gap: 12px;">
         <el-radio-group v-model="activeView" size="default">
           <el-radio-button value="funnel">🎯 求职效能与转化漏斗</el-radio-button>
           <el-radio-button value="market">🌐 全网岗位市场大盘</el-radio-button>
         </el-radio-group>
+        <el-button :loading="loading" @click="fetchData(true)" style="border-radius: 6px;">
+          🔄 刷新数据
+        </el-button>
       </div>
     </div>
 
@@ -157,11 +160,13 @@ const trendDimension = ref('weekly')
 const activeView = ref('funnel')
 const jobDrawerRef = ref(null)
 
-const fetchData = async () => {
+const fetchData = async (refresh = false) => {
+  loading.value = true
   try {
+    const query = refresh ? '?refresh=true' : ''
     const [dashRes, funnelRes] = await Promise.all([
-      $fetch('/api/dashboard'),
-      $fetch('/api/dashboard/funnel')
+      $fetch(`/api/dashboard${query}`),
+      $fetch(`/api/dashboard/funnel${query}`)
     ])
 
     if (dashRes?.success) {

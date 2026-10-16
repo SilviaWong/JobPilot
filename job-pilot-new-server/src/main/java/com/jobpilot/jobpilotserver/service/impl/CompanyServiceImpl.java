@@ -303,22 +303,22 @@ public class CompanyServiceImpl extends ServiceImpl<CompanyMapper, Company> impl
         log.info("Cache miss: Rebuilding company panorama for status: {}", status);
 
         // 1. 获取职位（只投影聚合所需列，排除无用大字段）
-        LambdaQueryWrapper<Job> jobWrapper = new LambdaQueryWrapper<>();
+        QueryWrapper<Job> jobWrapper = new QueryWrapper<>();
         jobWrapper.select(
-                Job::getId, Job::getJobId, Job::getTitle, Job::getCompanyName, Job::getCompanyFullName,
-                Job::getSalary, Job::getLocation, Job::getCity, Job::getPlatform, Job::getIsHeadhunter,
-                Job::getClientCompanyName, Job::getStatus, Job::getIsHidden, Job::getTags,
-                Job::getCreatedAt, Job::getFirstSeen
+                "id", "jobId", "title", "companyName", "companyFullName",
+                "salary", "location", "city", "platform", "isHeadhunter",
+                "clientCompanyName", "status", "isHidden", "tags",
+                "createdAt", "firstSeen"
         );
-        jobWrapper.ne(Job::getStatus, "deleted");
+        jobWrapper.ne("status", "deleted");
         if ("normal".equalsIgnoreCase(status) || status == null || status.isEmpty()) {
-            jobWrapper.eq(Job::getIsHidden, false).eq(Job::getStatus, "normal");
+            jobWrapper.eq("isHidden", false).eq("status", "normal");
         }
         List<Job> jobs = jobMapper.selectList(jobWrapper);
 
         // 1.1 获取 AI 结果映射 (仅投影 jobId, score, matchLevel)
-        LambdaQueryWrapper<AiJobResult> aiWrapper = new LambdaQueryWrapper<>();
-        aiWrapper.select(AiJobResult::getJobId, AiJobResult::getScore, AiJobResult::getMatchLevel);
+        QueryWrapper<AiJobResult> aiWrapper = new QueryWrapper<>();
+        aiWrapper.select("jobId", "score", "matchLevel");
         List<AiJobResult> aiResults = aiJobResultMapper.selectList(aiWrapper);
         Map<String, AiJobResult> aiResultMap = new HashMap<>(aiResults.size());
         for (AiJobResult a : aiResults) {

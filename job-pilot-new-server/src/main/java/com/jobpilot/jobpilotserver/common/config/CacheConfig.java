@@ -54,4 +54,26 @@ public class CacheConfig {
                 .maximumSize(20)
                 .build();
     }
+
+    /**
+     * 数据大盘综合统计本地缓存 (写入后15分钟过期，支持主动失效与强制刷新)
+     */
+    @Bean("dashboardStatsCache")
+    public Cache<String, java.util.Map<String, Object>> dashboardStatsCache() {
+        return Caffeine.newBuilder()
+                .expireAfterWrite(15, TimeUnit.MINUTES)
+                .maximumSize(10)
+                .build();
+    }
+
+    /**
+     * 求职转化漏斗指标本地缓存 (写入后10分钟过期，支持主动失效与强制刷新)
+     */
+    @Bean("dashboardFunnelCache")
+    public Cache<String, java.util.Map<String, Object>> dashboardFunnelCache() {
+        return Caffeine.newBuilder()
+                .expireAfterWrite(10, TimeUnit.MINUTES)
+                .maximumSize(10)
+                .build();
+    }
 }

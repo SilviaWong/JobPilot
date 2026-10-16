@@ -2,9 +2,7 @@ package com.jobpilot.jobpilotserver.controller;
 
 import com.jobpilot.jobpilotserver.common.result.Result;
 import com.jobpilot.jobpilotserver.service.DashboardService;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
@@ -19,12 +17,18 @@ public class DashboardController {
     private final DashboardService dashboardService;
 
     @GetMapping
-    public Result<Map<String, Object>> getDashboard() {
-        return Result.success(dashboardService.getDashboardStats());
+    public Result<Map<String, Object>> getDashboard(@RequestParam(defaultValue = "false") boolean refresh) {
+        return Result.success(dashboardService.getDashboardStats(refresh));
     }
 
     @GetMapping("/funnel")
-    public Result<Map<String, Object>> getFunnel() {
-        return Result.success(dashboardService.getFunnelAnalytics());
+    public Result<Map<String, Object>> getFunnel(@RequestParam(defaultValue = "false") boolean refresh) {
+        return Result.success(dashboardService.getFunnelAnalytics(refresh));
+    }
+
+    @PostMapping("/refresh")
+    public Result<Void> refresh() {
+        dashboardService.invalidateDashboardCache();
+        return Result.success(null);
     }
 }
