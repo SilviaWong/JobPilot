@@ -300,9 +300,12 @@ declare global {
   const ElMessageBox: typeof import('../../node_modules/element-plus/es/components/message-box/index').ElMessageBox
   const ElNotification: typeof import('../../node_modules/element-plus/es/components/notification/index').ElNotification
   const ID_INJECTION_KEY: typeof import('../../node_modules/element-plus/es/hooks/use-id/index').ID_INJECTION_KEY
+  const JobStatus: typeof import('../../utils/enums').JobStatus
   const ZINDEX_INJECTION_KEY: typeof import('../../node_modules/element-plus/es/hooks/use-z-index/index').ZINDEX_INJECTION_KEY
   const abortNavigation: typeof import('../../node_modules/nuxt/dist/app/composables/router').abortNavigation
   const addRouteMiddleware: typeof import('../../node_modules/nuxt/dist/app/composables/router').addRouteMiddleware
+  const analyzeCompany: typeof import('../../utils/companyAnalytics').analyzeCompany
+  const api: typeof import('../../utils/request').api
   const callOnce: typeof import('../../node_modules/nuxt/dist/app/composables/once').callOnce
   const cancelIdleCallback: typeof import('../../node_modules/nuxt/dist/app/compat/idle-callback').cancelIdleCallback
   const clearError: typeof import('../../node_modules/nuxt/dist/app/composables/error').clearError
@@ -327,9 +330,17 @@ declare global {
   const definePayloadReviver: typeof import('../../node_modules/nuxt/dist/app/composables/payload').definePayloadReviver
   const effect: typeof import('vue').effect
   const effectScope: typeof import('vue').effectScope
+  const formatDisplayDate: typeof import('../../utils/jobTimeUtils').formatDisplayDate
+  const formatTimeAgo: typeof import('../../utils/jobTimeUtils').formatTimeAgo
   const getAppManifest: typeof import('../../node_modules/nuxt/dist/app/composables/manifest').getAppManifest
   const getCurrentInstance: typeof import('vue').getCurrentInstance
   const getCurrentScope: typeof import('vue').getCurrentScope
+  const getEffectiveHrActive: typeof import('../../utils/hrActiveHelper').getEffectiveHrActive
+  const getJobAgeDays: typeof import('../../utils/jobTimeUtils').getJobAgeDays
+  const getJobPublishDate: typeof import('../../utils/jobTimeUtils').getJobPublishDate
+  const getJobTimeDiagnosis: typeof import('../../utils/jobTimeUtils').getJobTimeDiagnosis
+  const getJobTimeline: typeof import('../../utils/jobTimeUtils').getJobTimeline
+  const getJobUpdateDate: typeof import('../../utils/jobTimeUtils').getJobUpdateDate
   const getRouteRules: typeof import('../../node_modules/nuxt/dist/app/composables/manifest').getRouteRules
   const h: typeof import('vue').h
   const hasInjectionContext: typeof import('vue').hasInjectionContext
@@ -366,6 +377,8 @@ declare global {
   const onUnmounted: typeof import('vue').onUnmounted
   const onUpdated: typeof import('vue').onUpdated
   const onWatcherCleanup: typeof import('vue').onWatcherCleanup
+  const parseDateString: typeof import('../../utils/jobTimeUtils').parseDateString
+  const parseSalary: typeof import('../../utils/companyAnalytics').parseSalary
   const prefetchComponents: typeof import('../../node_modules/nuxt/dist/app/composables/preload').prefetchComponents
   const preloadComponents: typeof import('../../node_modules/nuxt/dist/app/composables/preload').preloadComponents
   const preloadPayload: typeof import('../../node_modules/nuxt/dist/app/composables/payload').preloadPayload
@@ -380,6 +393,7 @@ declare global {
   const refreshCookie: typeof import('../../node_modules/nuxt/dist/app/composables/cookie').refreshCookie
   const refreshNuxtData: typeof import('../../node_modules/nuxt/dist/app/composables/asyncData').refreshNuxtData
   const reloadNuxtApp: typeof import('../../node_modules/nuxt/dist/app/composables/chunk').reloadNuxtApp
+  const request: typeof import('../../utils/request').request
   const requestIdleCallback: typeof import('../../node_modules/nuxt/dist/app/compat/idle-callback').requestIdleCallback
   const resolveComponent: typeof import('vue').resolveComponent
   const setInterval: typeof import('../../node_modules/nuxt/dist/app/compat/interval').setInterval
@@ -418,6 +432,7 @@ declare global {
   const useModel: typeof import('vue').useModel
   const useNuxtApp: typeof import('../../node_modules/nuxt/dist/app/nuxt').useNuxtApp
   const useNuxtData: typeof import('../../node_modules/nuxt/dist/app/composables/asyncData').useNuxtData
+  const useNuxtDevTools: typeof import('../../node_modules/@nuxt/devtools/dist/runtime/use-nuxt-devtools').useNuxtDevTools
   const usePreviewMode: typeof import('../../node_modules/nuxt/dist/app/composables/preview').usePreviewMode
   const useRequestEvent: typeof import('../../node_modules/nuxt/dist/app/composables/ssr').useRequestEvent
   const useRequestFetch: typeof import('../../node_modules/nuxt/dist/app/composables/ssr').useRequestFetch
@@ -501,6 +516,21 @@ declare global {
   // @ts-ignore
   export type { PageMeta } from '../../node_modules/nuxt/dist/app/composables/pages'
   import('../../node_modules/nuxt/dist/app/composables/pages')
+  // @ts-ignore
+  export type { SalaryRange, PlatformStatItem, ClientStatItem, CompanyAnalysis } from '../../utils/companyAnalytics'
+  import('../../utils/companyAnalytics')
+  // @ts-ignore
+  export type { JobStatus } from '../../utils/enums'
+  import('../../utils/enums')
+  // @ts-ignore
+  export type { EffectiveHrLevel, EffectiveHrResult } from '../../utils/hrActiveHelper'
+  import('../../utils/hrActiveHelper')
+  // @ts-ignore
+  export type { JobTimeDiagnosis, TimelineItem } from '../../utils/jobTimeUtils'
+  import('../../utils/jobTimeUtils')
+  // @ts-ignore
+  export type { ApiResponse, RequestOptions } from '../../utils/request'
+  import('../../utils/request')
 }
 // for vue template auto import
 import { UnwrapRef } from 'vue'
@@ -805,9 +835,12 @@ declare module 'vue' {
     readonly ElMessageBox: UnwrapRef<typeof import('../../node_modules/element-plus/es/components/message-box/index')['ElMessageBox']>
     readonly ElNotification: UnwrapRef<typeof import('../../node_modules/element-plus/es/components/notification/index')['ElNotification']>
     readonly ID_INJECTION_KEY: UnwrapRef<typeof import('../../node_modules/element-plus/es/hooks/use-id/index')['ID_INJECTION_KEY']>
+    readonly JobStatus: UnwrapRef<typeof import('../../utils/enums')['JobStatus']>
     readonly ZINDEX_INJECTION_KEY: UnwrapRef<typeof import('../../node_modules/element-plus/es/hooks/use-z-index/index')['ZINDEX_INJECTION_KEY']>
     readonly abortNavigation: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/router')['abortNavigation']>
     readonly addRouteMiddleware: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/router')['addRouteMiddleware']>
+    readonly analyzeCompany: UnwrapRef<typeof import('../../utils/companyAnalytics')['analyzeCompany']>
+    readonly api: UnwrapRef<typeof import('../../utils/request')['api']>
     readonly callOnce: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/once')['callOnce']>
     readonly cancelIdleCallback: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/compat/idle-callback')['cancelIdleCallback']>
     readonly clearError: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/error')['clearError']>
@@ -832,9 +865,17 @@ declare module 'vue' {
     readonly definePayloadReviver: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/payload')['definePayloadReviver']>
     readonly effect: UnwrapRef<typeof import('vue')['effect']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
+    readonly formatDisplayDate: UnwrapRef<typeof import('../../utils/jobTimeUtils')['formatDisplayDate']>
+    readonly formatTimeAgo: UnwrapRef<typeof import('../../utils/jobTimeUtils')['formatTimeAgo']>
     readonly getAppManifest: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/manifest')['getAppManifest']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
+    readonly getEffectiveHrActive: UnwrapRef<typeof import('../../utils/hrActiveHelper')['getEffectiveHrActive']>
+    readonly getJobAgeDays: UnwrapRef<typeof import('../../utils/jobTimeUtils')['getJobAgeDays']>
+    readonly getJobPublishDate: UnwrapRef<typeof import('../../utils/jobTimeUtils')['getJobPublishDate']>
+    readonly getJobTimeDiagnosis: UnwrapRef<typeof import('../../utils/jobTimeUtils')['getJobTimeDiagnosis']>
+    readonly getJobTimeline: UnwrapRef<typeof import('../../utils/jobTimeUtils')['getJobTimeline']>
+    readonly getJobUpdateDate: UnwrapRef<typeof import('../../utils/jobTimeUtils')['getJobUpdateDate']>
     readonly getRouteRules: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/manifest')['getRouteRules']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hasInjectionContext: UnwrapRef<typeof import('vue')['hasInjectionContext']>
@@ -871,6 +912,8 @@ declare module 'vue' {
     readonly onUnmounted: UnwrapRef<typeof import('vue')['onUnmounted']>
     readonly onUpdated: UnwrapRef<typeof import('vue')['onUpdated']>
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
+    readonly parseDateString: UnwrapRef<typeof import('../../utils/jobTimeUtils')['parseDateString']>
+    readonly parseSalary: UnwrapRef<typeof import('../../utils/companyAnalytics')['parseSalary']>
     readonly prefetchComponents: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/preload')['prefetchComponents']>
     readonly preloadComponents: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/preload')['preloadComponents']>
     readonly preloadPayload: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/payload')['preloadPayload']>
@@ -885,6 +928,7 @@ declare module 'vue' {
     readonly refreshCookie: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/cookie')['refreshCookie']>
     readonly refreshNuxtData: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/asyncData')['refreshNuxtData']>
     readonly reloadNuxtApp: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/chunk')['reloadNuxtApp']>
+    readonly request: UnwrapRef<typeof import('../../utils/request')['request']>
     readonly requestIdleCallback: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/compat/idle-callback')['requestIdleCallback']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly setInterval: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/compat/interval')['setInterval']>
@@ -923,6 +967,7 @@ declare module 'vue' {
     readonly useModel: UnwrapRef<typeof import('vue')['useModel']>
     readonly useNuxtApp: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/nuxt')['useNuxtApp']>
     readonly useNuxtData: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/asyncData')['useNuxtData']>
+    readonly useNuxtDevTools: UnwrapRef<typeof import('../../node_modules/@nuxt/devtools/dist/runtime/use-nuxt-devtools')['useNuxtDevTools']>
     readonly usePreviewMode: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/preview')['usePreviewMode']>
     readonly useRequestEvent: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/ssr')['useRequestEvent']>
     readonly useRequestFetch: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/ssr')['useRequestFetch']>
